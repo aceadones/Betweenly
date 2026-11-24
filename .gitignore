@@ -14,3 +14,4 @@ android/local.properties
 node_modules/
 relay/node_modules/
 *.log
+dist/
