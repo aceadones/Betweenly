@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -152,9 +153,13 @@ fun ActivityScreen() {
                         },
                     )
                 }
-                TextButton(onClick = { wheel = true }) {
-                    Text(stringResource(R.string.draw_picker))
-                }
+            }
+            TextButton(onClick = { wheel = true }) {
+                Text(
+                    stringResource(R.string.draw_picker),
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -346,14 +351,26 @@ private fun Swatch(
     description: String,
     onClick: () -> Unit,
 ) {
-    val outline = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+    val dark = isSystemInDarkTheme()
+    val whiteInk = color == LdColors.paper || color == LdColors.white
+    val outline = when {
+        selected -> MaterialTheme.colorScheme.primary
+        dark -> LdColors.white
+        whiteInk -> LdColors.navy
+        else -> MaterialTheme.colorScheme.outline
+    }
+    val stroke = when {
+        selected -> 3.dp
+        dark || whiteInk -> 2.dp
+        else -> 1.dp
+    }
     Surface(
         modifier = Modifier
             .size(32.dp)
             .semantics { contentDescription = description },
         shape = CircleShape,
         color = color,
-        border = androidx.compose.foundation.BorderStroke(if (selected) 3.dp else 1.dp, outline),
+        border = androidx.compose.foundation.BorderStroke(stroke, outline),
         onClick = onClick,
         shadowElevation = 0.dp,
     ) {}

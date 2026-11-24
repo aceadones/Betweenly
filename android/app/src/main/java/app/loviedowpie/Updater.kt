@@ -20,6 +20,17 @@ data class UpdateInfo(
 )
 
 /**
+ * [Updater.check] answer.
+ * [UpToDate] includes "already checked within 24 hours" when [Updater.check]
+ * was not forced, so a quiet caller does not treat that skip as a failure.
+ */
+sealed interface UpdateCheck {
+    data object UpToDate : UpdateCheck
+    data class Available(val info: UpdateInfo) : UpdateCheck
+    data object Error : UpdateCheck
+}
+
+/**
  * Checks the relay for a newer APK, downloads it, checks the hash, and hands
  * it to the system installer. The user has to allow "install unknown apps"
  * once; [install] opens that screen when it is still off and returns false
@@ -33,26 +44,33 @@ object Updater {
     private const val DAY_MS = 24L * 60L * 60L * 1000L
 
     /**
-     * Null when there is nothing newer to show: checked within 24 hours
-     * (unless [force]), the network failed, or this build is current.
-     * A failed network call does not move the 24 hour clock, so the next
-     * open can try again. A real answer (including "nothing published") does.
+     * [UpdateCheck.UpToDate] when this build is current, nothing is published,
+     * or a check already succeeded within 24 hours (unless [force]).
+     * [UpdateCheck.Available] when the relay has a newer APK.
+     * [UpdateCheck.Error] when the relay could not be reached. A failed call
+     * does not move the 24 hour clock, so the next open can try again. The
+     * home auto-check should stay quiet on [UpdateCheck.UpToDate] and
+     * [UpdateCheck.Error]. A real answer (including "nothing published") does
+     * move the clock.
      */
-    suspend fun check(context: Context, force: Boolean = false): UpdateInfo? {
+    suspend fun check(context: Context, force: Boolean = false): UpdateCheck {
         val now = System.currentTimeMillis()
-        if (!force && now - Store.lastUpdateCheck(context) < DAY_MS) return null
+        if (!force && now - Store.lastUpdateCheck(context) < DAY_MS) return UpdateCheck.UpToDate
         // DATA-FLOW: update metadata, from the relay, not encrypted, no user data.
         val query = Relay.queryLatest()
-        if (query.httpCode != 200 && query.httpCode != 404) return null
+        if (query.httpCode != 200 && query.httpCode != 404) return UpdateCheck.Error
         Store.setLastUpdateCheck(context, now)
-        val json = query.json ?: return null
+        if (query.httpCode == 404) return UpdateCheck.UpToDate
+        val json = query.json ?: return UpdateCheck.UpToDate
         val code = json.optInt("versionCode", 0)
-        if (code <= BuildConfig.VERSION_CODE) return null
-        return UpdateInfo(
-            versionCode = code,
-            versionName = json.optString("versionName"),
-            sha256 = json.optString("sha256"),
-            notes = json.optString("notes"),
+        if (code <= BuildConfig.VERSION_CODE) return UpdateCheck.UpToDate
+        return UpdateCheck.Available(
+            UpdateInfo(
+                versionCode = code,
+                versionName = json.optString("versionName"),
+                sha256 = json.optString("sha256"),
+                notes = json.optString("notes"),
+            ),
         )
     }
 

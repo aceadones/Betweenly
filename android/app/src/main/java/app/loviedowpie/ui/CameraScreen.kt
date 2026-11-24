@@ -397,9 +397,10 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
         }
     }
 
-    val canFlip = session.attached &&
-        session.hasFacing(CameraSelector.LENS_FACING_BACK) &&
-        session.hasFacing(CameraSelector.LENS_FACING_FRONT)
+    val canFlip = session.canFlip
+    LaunchedEffect(session.attached, session.ready) {
+        if (session.attached) session.refreshCameras()
+    }
     val qualityLabel = if (videoMode) selectedVideo?.label else selectedPhoto?.label
     val onTap = rememberUpdatedState { offset: Offset ->
         focusAt = offset
@@ -472,7 +473,6 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                         } else {
                             CameraSelector.LENS_FACING_FRONT
                         }
-                        if (!session.hasFacing(next)) return@CameraOverlay
                         facing = next
                         CameraPrefs.saveLens(context, next)
                     },
@@ -499,6 +499,9 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
     if (askAudio) {
         AlertDialog(
             onDismissRequest = { askAudio = false },
+            containerColor = LdColors.colors.menu,
+            titleContentColor = LdColors.colors.ink,
+            textContentColor = LdColors.colors.ink,
             title = { Text(stringResource(R.string.camera_audio_title)) },
             text = { Text(stringResource(R.string.camera_audio_body)) },
             confirmButton = {

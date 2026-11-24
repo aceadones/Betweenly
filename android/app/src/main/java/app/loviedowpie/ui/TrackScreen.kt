@@ -1,20 +1,33 @@
 package app.loviedowpie.ui
 
 import androidx.compose.runtime.collectAsState
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -35,7 +48,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import app.loviedowpie.R
 import app.loviedowpie.Store
 import kotlinx.coroutines.Dispatchers
@@ -72,10 +84,11 @@ fun TrackScreen(onBack: () -> Unit) {
     val lat = loc?.lat
     val lon = loc?.lon
     val sharingOff = lat != null && lon != null && !sharing
+    MapStatusIcons()
 
     Scaffold(
         containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        contentWindowInsets = WindowInsets.navigationBars,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -104,14 +117,23 @@ fun TrackScreen(onBack: () -> Unit) {
                         )
                     }
                 }
+                MapTopScrim()
                 GlassIconButton(
                     onClick = onBack,
-                    icon = Icons.Filled.ArrowBack,
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
                     description = stringResource(R.string.back),
-                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(8.dp),
                 )
                 if (loc?.live == true) {
-                    Box(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(12.dp),
+                    ) {
                         StatusChip(stringResource(R.string.live), emphasized = true)
                     }
                 }
@@ -126,6 +148,7 @@ fun TrackScreen(onBack: () -> Unit) {
                         stringResource(R.string.location_off_last, whenSeen),
                         modifier = Modifier
                             .align(Alignment.TopCenter)
+                            .statusBarsPadding()
                             .padding(top = 64.dp, start = 16.dp, end = 16.dp)
                             .fillMaxWidth()
                             .ldGlass(RoundedCornerShape(24.dp))
@@ -138,6 +161,7 @@ fun TrackScreen(onBack: () -> Unit) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
+                            .statusBarsPadding()
                             .padding(
                                 top = if (sharingOff) 140.dp else 64.dp,
                                 start = 16.dp,
@@ -191,9 +215,25 @@ fun TrackScreen(onBack: () -> Unit) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val partnerStatus = when {
+                                sharing && loc?.live == true -> stringResource(R.string.live)
+                                sharing -> stringResource(R.string.sharing_on)
+                                loc != null -> stringResource(R.string.sharing_paused)
+                                else -> null
+                            }
                             if (sharing) {
                                 Spacer(Modifier.width(6.dp))
                                 VerifiedDot()
+                            }
+                            if (partnerStatus != null) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    partnerStatus,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = LdColors.colors.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                         if (loc != null) {
@@ -218,4 +258,46 @@ fun TrackScreen(onBack: () -> Unit) {
             }
         }
     }
+}
+
+/** Dark icons on the light scrim, light icons on the navy scrim. */
+@Composable
+private fun MapStatusIcons() {
+    val view = LocalView.current
+    val dark = isSystemInDarkTheme()
+    DisposableEffect(view, dark) {
+        val window = view.context.findActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = !dark
+        onDispose {
+            if (previous != null) controller?.isAppearanceLightStatusBars = previous
+        }
+    }
+}
+
+/** Soft fade under the status bar so clock and battery stay readable on map tiles. */
+@Composable
+private fun BoxScope.MapTopScrim() {
+    val top = if (isSystemInDarkTheme()) LdColors.navy else LdColors.white
+    Box(
+        Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .height(96.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(top.copy(alpha = 0.94f), top.copy(alpha = 0f)),
+                ),
+            ),
+    )
+}
+
+private fun Context.findActivity(): Activity? {
+    var current: Context = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }

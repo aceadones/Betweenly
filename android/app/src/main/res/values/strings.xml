@@ -280,4 +280,8 @@
     <string name="chat_reply_file">File</string>
     <string name="chat_reply_gone">Message</string>
     <string name="notif_system_failed">Could not open notification settings.</string>
+    <string name="camera_switch">Switch camera</string>
+    <string name="battery_unknown_short">Unknown</string>
+    <string name="update_latest">You have the latest version</string>
+    <string name="update_unreachable">Could not reach the update server. Try again later.</string>
 </resources>

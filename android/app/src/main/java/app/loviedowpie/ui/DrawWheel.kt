@@ -65,7 +65,8 @@ fun DrawColorDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surface,
+            color = LdColors.colors.menu,
+            contentColor = LdColors.colors.ink,
         ) {
             Column(
                 modifier = Modifier

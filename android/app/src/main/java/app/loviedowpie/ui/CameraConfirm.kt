@@ -17,13 +17,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -87,11 +91,37 @@ internal fun CameraConfirm(
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onRetake, enabled = sendEnabled) {
+            OutlinedButton(
+                onClick = onRetake,
+                enabled = sendEnabled,
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(
+                    1.5.dp,
+                    if (sendEnabled) LdColors.cameraContent else LdColors.cameraFaint,
+                ),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = LdColors.clear,
+                    contentColor = LdColors.cameraContent,
+                    disabledContainerColor = LdColors.clear,
+                    disabledContentColor = LdColors.cameraFaint,
+                ),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
                 Text(stringResource(R.string.camera_retake))
             }
             Spacer(Modifier.width(12.dp))
-            Button(onClick = onSend, enabled = sendEnabled) {
+            Button(
+                onClick = onSend,
+                enabled = sendEnabled,
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LdColors.bubbleMine,
+                    contentColor = LdColors.white,
+                    disabledContainerColor = LdColors.cameraFaint,
+                    disabledContentColor = LdColors.white,
+                ),
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
                 Text(stringResource(R.string.camera_send))
             }
         }

@@ -31,11 +31,14 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -58,6 +61,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Spacer
@@ -66,7 +70,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -134,6 +142,9 @@ private fun ChatBody(
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var ready by remember { mutableStateOf<Set<String>>(emptySet()) }
     var text by rememberSaveable { mutableStateOf("") }
+    // Snapshot taken on finger-down, before the IME can clear the field.
+    var armed by remember { mutableStateOf("") }
+    val draft = rememberUpdatedState(text)
     var menuId by remember { mutableStateOf<String?>(null) }
     var replyId by remember { mutableStateOf(ChatController.peekReply()) }
     var attachOpen by remember { mutableStateOf(false) }
@@ -188,6 +199,24 @@ private fun ChatBody(
         }
     }
 
+    fun sendDraft(fromKeyboard: Boolean = false) {
+        val current = if (fromKeyboard) {
+            text.trim()
+        } else {
+            text.trim().ifEmpty { armed.trim() }
+        }
+        if (current.isEmpty()) {
+            armed = ""
+            return
+        }
+        val id = replyId
+        val queued = ChatController.sendText(context, current, id)
+        if (!queued) return
+        armed = ""
+        text = ""
+        replyId = null
+    }
+
     val today = LocalDate.now()
     val rows = remember(messages, today) { buildRows(messages) }
     val selected = messages.firstOrNull { it.id == menuId }
@@ -220,9 +249,20 @@ private fun ChatBody(
                             IconButton(onClick = { overflowOpen = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.chat_menu))
                             }
-                            DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenu(
+                                expanded = overflowOpen,
+                                onDismissRequest = { overflowOpen = false },
+                                containerColor = LdColors.colors.menu,
+                                tonalElevation = 0.dp,
+                                border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_settings)) },
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.chat_settings),
+                                            color = LdColors.colors.ink,
+                                        )
+                                    },
                                     onClick = {
                                         overflowOpen = false
                                         onOpenSettings()
@@ -335,9 +375,20 @@ private fun ChatBody(
                             IconButton(onClick = { attachOpen = true }) {
                                 Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.chat_attach))
                             }
-                            DropdownMenu(expanded = attachOpen, onDismissRequest = { attachOpen = false }) {
+                            DropdownMenu(
+                                expanded = attachOpen,
+                                onDismissRequest = { attachOpen = false },
+                                containerColor = LdColors.colors.menu,
+                                tonalElevation = 0.dp,
+                                border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_gallery)) },
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.chat_gallery),
+                                            color = LdColors.colors.ink,
+                                        )
+                                    },
                                     onClick = {
                                         attachOpen = false
                                         try {
@@ -350,7 +401,12 @@ private fun ChatBody(
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_file)) },
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.chat_file),
+                                            color = LdColors.colors.ink,
+                                        )
+                                    },
                                     onClick = {
                                         attachOpen = false
                                         try {
@@ -361,7 +417,12 @@ private fun ChatBody(
                                     },
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.chat_camera)) },
+                                    text = {
+                                        Text(
+                                            stringResource(R.string.chat_camera),
+                                            color = LdColors.colors.ink,
+                                        )
+                                    },
                                     onClick = {
                                         attachOpen = false
                                         onOpenCamera()
@@ -371,7 +432,16 @@ private fun ChatBody(
                         }
                         TextField(
                             value = text,
-                            onValueChange = { text = it.take(10_000) },
+                            onValueChange = { incoming ->
+                                val next = incoming.take(10_000)
+                                val previous = text
+                                text = next
+                                // Keep the finger-down snapshot when the IME wipes the field
+                                // in the same tap. A real delete (different text) drops it.
+                                if (next.isEmpty() && armed.trim() != previous.trim()) armed = ""
+                            },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(onSend = { sendDraft(fromKeyboard = true) }),
                             modifier = Modifier.weight(1f).contentReceiver(object : ReceiveContentListener {
                               override fun onReceive(transferableContent: TransferableContent): TransferableContent? {
                                 val content = transferableContent
@@ -417,17 +487,23 @@ private fun ChatBody(
                             ),
                         )
                         IconButton(
-                            onClick = {
-                                val current = text
-                                if (current.isBlank()) return@IconButton
-                                val id = replyId
-                                text = ""
-                                replyId = null
-                                ChatController.sendText(context, current, id)
+                            onClick = { sendDraft() },
+                            enabled = text.trim().isNotEmpty() || armed.trim().isNotEmpty(),
+                            modifier = Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        if (event.changes.any { it.changedToDown() }) {
+                                            armed = draft.value
+                                        }
+                                    }
+                                }
                             },
-                            enabled = text.isNotBlank(),
                         ) {
-                            Icon(Icons.Filled.Send, contentDescription = stringResource(R.string.chat_send))
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = stringResource(R.string.chat_send),
+                            )
                         }
                     }
                 }
@@ -512,6 +588,9 @@ private fun MessageActions(
     val copy = copyable(message)
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LdColors.colors.menu,
+        titleContentColor = LdColors.colors.ink,
+        textContentColor = LdColors.colors.ink,
         title = { Text(stringResource(R.string.chat_actions)) },
         text = {
             Column {

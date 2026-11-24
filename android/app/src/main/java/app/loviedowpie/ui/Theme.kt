@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -141,6 +141,7 @@ object LdColors {
         navIdle = Color(0xFF5C7290),
         dialog = Color(0xFFF4F9FF),
         textPrimary = Color(0xFF185FC4),
+        menu = Color(0xD6FFFFFF),
     )
 
     val dark = LdPalette(
@@ -157,16 +158,18 @@ object LdColors {
         inkMuted = Color(0xFFC5D4E8),
         chipOn = Color(0xFFFFFFFF),
         chipOnInk = Color(0xFF0A1F44),
-        pill = Color(0xFF111318),
-        onPill = Color(0xFFFFFFFF),
-        pillBorder = Color(0x66FFFFFF),
-        knob = Color(0xFFFFFFFF),
-        onKnob = Color(0xFF111318),
+        // Light fill so the pill stays visible on the navy sky. Navy text clears WCAG AA.
+        pill = Color(0xFFF4F8FF),
+        onPill = Color(0xFF0A1F44),
+        pillBorder = Color(0xFFFFFFFF),
+        knob = Color(0xFF0A1F44),
+        onKnob = Color(0xFFFFFFFF),
         shadow = Color(0x66000000),
         bubbleTheirs = Color(0xE6FFFFFF),
         navIdle = Color(0xFFB7C7DC),
         dialog = Color(0xFF122848),
         textPrimary = Color(0xFF7EB6FF),
+        menu = Color(0xFF122848),
     )
 
     val colors: LdPalette
@@ -198,6 +201,8 @@ class LdPalette(
     val navIdle: Color,
     val dialog: Color,
     val textPrimary: Color,
+    /** Popup fill: translucent white in light, navy glass in dark. */
+    val menu: Color,
 )
 
 private val BaseType = Typography()
@@ -247,6 +252,11 @@ private val LightColors = lightColorScheme(
     errorContainer = Color(0xFFFFDAD6),
     onErrorContainer = Color(0xFF410002),
     surfaceTint = LdColors.clear,
+    surfaceContainerLowest = LdColors.light.menu,
+    surfaceContainerLow = LdColors.light.menu,
+    surfaceContainer = LdColors.light.menu,
+    surfaceContainerHigh = LdColors.light.menu,
+    surfaceContainerHighest = LdColors.light.menu,
     inverseSurface = LdColors.navy,
     inverseOnSurface = LdColors.white,
     scrim = Color(0x99000000),
@@ -273,6 +283,11 @@ private val DarkColors = darkColorScheme(
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6),
     surfaceTint = LdColors.clear,
+    surfaceContainerLowest = LdColors.dark.menu,
+    surfaceContainerLow = LdColors.dark.menu,
+    surfaceContainer = LdColors.dark.menu,
+    surfaceContainerHigh = LdColors.dark.menu,
+    surfaceContainerHighest = LdColors.dark.menu,
     inverseSurface = Color(0xFFE7F1FF),
     inverseOnSurface = LdColors.navy,
     scrim = Color(0xCC000000),
@@ -346,7 +361,7 @@ fun PrimaryPill(
             Modifier.size(48.dp).clip(CircleShape).background(c.knob),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.ArrowForward, contentDescription = null, tint = c.onKnob)
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = c.onKnob)
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Text(
@@ -429,7 +444,7 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
             value,
             style = MaterialTheme.typography.titleSmall,
             color = c.ink,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -443,7 +458,7 @@ fun VerifiedDot() {
     ) {
         Icon(
             Icons.Filled.Check,
-            contentDescription = stringResource(R.string.sharing_on),
+            contentDescription = null,
             tint = LdColors.white,
             modifier = Modifier.size(12.dp),
         )

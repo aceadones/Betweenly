@@ -68,6 +68,7 @@ import app.loviedowpie.Outbox
 import app.loviedowpie.R
 import app.loviedowpie.SavedDrawing
 import app.loviedowpie.Store
+import app.loviedowpie.UpdateCheck
 import app.loviedowpie.UpdateInfo
 import app.loviedowpie.Updater
 import kotlinx.coroutines.Dispatchers
@@ -94,6 +95,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     var confirm by rememberSaveable { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    var statusError by remember { mutableStateOf(false) }
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
     var viewingTs by rememberSaveable { mutableStateOf(-1L) }
     val safety = remember(revision) { Store.safetyNumber(context) }
@@ -120,6 +122,9 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
+            containerColor = LdColors.colors.menu,
+            titleContentColor = LdColors.colors.ink,
+            textContentColor = LdColors.colors.ink,
             title = { Text(stringResource(R.string.unpair_title)) },
             text = { Text(stringResource(R.string.unpair_body_v2)) },
             confirmButton = {
@@ -254,16 +259,31 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                             if (checking) return@SecondaryPill
                             checking = true
                             scope.launch {
-                                val info = try {
+                                val result = try {
                                     // DATA-FLOW: update metadata, from the relay, not encrypted, no user data.
                                     Updater.check(context, force = true)
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
-                                    null
+                                    UpdateCheck.Error
                                 }
-                                update = info
-                                status = if (info == null) context.getString(R.string.update_none) else null
+                                when (result) {
+                                    is UpdateCheck.Available -> {
+                                        update = result.info
+                                        status = null
+                                        statusError = false
+                                    }
+                                    UpdateCheck.UpToDate -> {
+                                        update = null
+                                        status = context.getString(R.string.update_latest)
+                                        statusError = false
+                                    }
+                                    UpdateCheck.Error -> {
+                                        update = null
+                                        status = context.getString(R.string.update_unreachable)
+                                        statusError = true
+                                    }
+                                }
                                 checking = false
                             }
                         },
@@ -273,7 +293,13 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                     if (checking) {
                         CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                     }
-                    status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    status?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (statusError) MaterialTheme.colorScheme.error else LdColors.colors.ink,
+                        )
+                    }
                     update?.let { UpdateBanner(it) }
                     Text(stringResource(R.string.pair_safety_title), style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -296,7 +322,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        stringResource(R.string.privacy_link),
+                        stringResource(R.string.privacy_see),
                         color = MaterialTheme.colorScheme.primary,
                         textDecoration = TextDecoration.Underline,
                         style = MaterialTheme.typography.bodyLarge,
@@ -422,7 +448,8 @@ private fun DrawingViewer(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surface,
+            color = LdColors.colors.menu,
+            contentColor = LdColors.colors.ink,
         ) {
             Column(
                 modifier = Modifier

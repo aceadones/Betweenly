@@ -131,10 +131,11 @@ object ChatController {
         }
     }
 
-    fun sendText(context: Context, raw: String, replyId: String? = null) {
+    /** True once the message is queued. The field should be cleared only after that. */
+    fun sendText(context: Context, raw: String, replyId: String? = null): Boolean {
         install(context)
         val text = raw.trim().take(10_000)
-        if (text.isEmpty()) return
+        if (text.isEmpty() || !Store.isPaired(context)) return false
         val reply = resolveReply(replyId)
         AppScope.scope.launch {
             try {
@@ -151,6 +152,7 @@ object ChatController {
                 note(R.string.chat_send_failed)
             }
         }
+        return true
     }
 
     fun retry(context: Context, id: String) {

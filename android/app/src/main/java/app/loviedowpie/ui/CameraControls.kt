@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import app.loviedowpie.CameraCaps
 import app.loviedowpie.R
 import java.util.Locale
@@ -85,7 +86,12 @@ internal fun CameraOverlay(
     onQuality: () -> Unit,
 ) {
     val controlsLocked = session.recording || session.stopping
-    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .zIndex(2f)
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -162,11 +168,22 @@ internal fun CameraOverlay(
             )
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-                    if (canFlip && !controlsLocked) {
+                val switchLabel = stringResource(R.string.camera_switch)
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .semantics(mergeDescendants = true) {
+                            if (canFlip) contentDescription = switchLabel
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // Visible in photo and video. Disabled only while a recording is stopping.
+                    // Hidden when the phone has a single camera (canFlip is false).
+                    if (canFlip) {
                         RoundIconButton(
                             onClick = onFlip,
-                            description = stringResource(R.string.camera_flip),
+                            enabled = !controlsLocked,
+                            description = switchLabel,
                             icon = FlipIcon,
                         )
                     }
@@ -365,6 +382,9 @@ internal fun QualityDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = LdColors.colors.menu,
+        titleContentColor = LdColors.colors.ink,
+        textContentColor = LdColors.colors.ink,
         title = { Text(stringResource(R.string.camera_quality)) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {

@@ -1,12 +1,17 @@
+@file:OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
+
 package app.loviedowpie.ui
 
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.util.Range
 import android.util.Size
 import android.view.Surface
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraInfo
@@ -117,15 +122,20 @@ internal class CameraSession(
     private var boundKey = ""
     private var activeFps: Int? = null
 
+    /** True when the phone has more than one camera, so the flip control can switch. */
+    var canFlip by mutableStateOf(false)
+        private set
+    private var knownFacings: Set<Int> = emptySet()
+
     init {
         flashMode = CameraPrefs.savedFlash(context)
     }
 
     fun attach(next: ProcessCameraProvider) {
         provider = next
-        val back = hasFacing(CameraSelector.LENS_FACING_BACK)
-        val front = hasFacing(CameraSelector.LENS_FACING_FRONT)
-        noCamera = !back && !front
+        refreshCameras()
+        noCamera = !hasFacing(CameraSelector.LENS_FACING_BACK) &&
+            !hasFacing(CameraSelector.LENS_FACING_FRONT)
         attached = true
     }
 
@@ -137,12 +147,55 @@ internal class CameraSession(
     }
 
     fun hasFacing(facing: Int): Boolean {
+        if (facing in knownFacings) return true
         val current = provider ?: return false
-        return try {
-            current.hasCamera(CameraSelector.Builder().requireLensFacing(facing).build())
-        } catch (_: Exception) {
-            false
+        return probe(current, facing)
+    }
+
+    /**
+     * Front and back, from CameraX and from CameraManager. CameraX's hasCamera
+     * can miss the second lens on emulators even when the camera exists.
+     * More than one camera id still counts, so the flip control is hidden only
+     * on a phone with a single camera.
+     */
+    fun refreshCameras() {
+        val found = HashSet<Int>()
+        val current = provider
+        if (current != null) {
+            for (info in current.availableCameraInfos) {
+                when (readLens(info)) {
+                    CameraSelector.LENS_FACING_FRONT -> found.add(CameraSelector.LENS_FACING_FRONT)
+                    CameraSelector.LENS_FACING_BACK -> found.add(CameraSelector.LENS_FACING_BACK)
+                }
+            }
+            if (probe(current, CameraSelector.LENS_FACING_BACK)) found.add(CameraSelector.LENS_FACING_BACK)
+            if (probe(current, CameraSelector.LENS_FACING_FRONT)) found.add(CameraSelector.LENS_FACING_FRONT)
         }
+        var hardwareCount = 0
+        try {
+            val manager = context.getSystemService(CameraManager::class.java)
+            val ids = manager?.cameraIdList ?: emptyArray()
+            hardwareCount = ids.size
+            for (id in ids) {
+                val facing = try {
+                    manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
+                } catch (_: Exception) {
+                    null
+                }
+                when (facing) {
+                    CameraCharacteristics.LENS_FACING_FRONT -> found.add(CameraSelector.LENS_FACING_FRONT)
+                    CameraCharacteristics.LENS_FACING_BACK -> found.add(CameraSelector.LENS_FACING_BACK)
+                }
+            }
+        } catch (_: Exception) {
+            // No camera service. CameraX's list still applies.
+        }
+        if (hardwareCount >= 2 && found.size < 2) {
+            found.add(CameraSelector.LENS_FACING_BACK)
+            found.add(CameraSelector.LENS_FACING_FRONT)
+        }
+        knownFacings = found
+        canFlip = CameraSelector.LENS_FACING_BACK in found && CameraSelector.LENS_FACING_FRONT in found
     }
 
     fun findInfo(facing: Int): CameraInfo? {
@@ -188,7 +241,7 @@ internal class CameraSession(
         }
         ready = false
         val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
-        val selector = CameraSelector.Builder().requireLensFacing(facing).build()
+        val selector = selectorFor(facing)
         val opened = if (videoMode) {
             openVideo(current, lifecycleOwner, selector, previewView, rotation, video)
         } else {
@@ -679,6 +732,61 @@ internal class CameraSession(
             onClip(file, video)
         } catch (_: Exception) {
             runCatching { file.delete() }
+        }
+    }
+
+    private fun selectorFor(facing: Int): CameraSelector {
+        val lens = CameraSelector.Builder().requireLensFacing(facing).build()
+        val current = provider
+        if (current != null && probe(current, facing)) return lens
+        val id = cameraIdFor(facing) ?: return lens
+        return CameraSelector.Builder().addCameraFilter { infos ->
+            infos.filter { cameraIdOf(it) == id }
+        }.build()
+    }
+
+    private fun probe(current: ProcessCameraProvider, facing: Int): Boolean {
+        return try {
+            current.hasCamera(CameraSelector.Builder().requireLensFacing(facing).build())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun readLens(info: CameraInfo): Int {
+        return try {
+            info.lensFacing
+        } catch (_: Throwable) {
+            CameraSelector.LENS_FACING_UNKNOWN
+        }
+    }
+
+    private fun cameraIdOf(info: CameraInfo): String? {
+        return try {
+            Camera2CameraInfo.from(info).cameraId
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun cameraIdFor(facing: Int): String? {
+        val wanted = when (facing) {
+            CameraSelector.LENS_FACING_FRONT -> CameraCharacteristics.LENS_FACING_FRONT
+            CameraSelector.LENS_FACING_BACK -> CameraCharacteristics.LENS_FACING_BACK
+            else -> return null
+        }
+        return try {
+            val manager = context.getSystemService(CameraManager::class.java) ?: return null
+            manager.cameraIdList.firstOrNull { id ->
+                val value = try {
+                    manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
+                } catch (_: Exception) {
+                    null
+                }
+                value == wanted
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 

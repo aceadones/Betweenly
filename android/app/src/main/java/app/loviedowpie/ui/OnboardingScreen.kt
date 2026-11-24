@@ -233,7 +233,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
             )
             Text(
-                text = stringResource(R.string.privacy_link),
+                text = stringResource(R.string.privacy_see),
                 color = MaterialTheme.colorScheme.primary,
                 textDecoration = TextDecoration.Underline,
                 style = MaterialTheme.typography.bodyLarge,

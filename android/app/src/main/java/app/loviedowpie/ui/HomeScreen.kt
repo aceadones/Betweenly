@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import app.loviedowpie.BuildConfig
 import app.loviedowpie.R
 import app.loviedowpie.Store
+import app.loviedowpie.UpdateCheck
 import app.loviedowpie.UpdateInfo
 import app.loviedowpie.Updater
 import kotlin.coroutines.cancellation.CancellationException
@@ -51,24 +52,24 @@ fun HomeScreen(onTrack: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val revision by Store.changes.collectAsState()
     val now = rememberNow()
-    // Kept across rotation. check() is null for a day after a real answer, so the
-    // banner would otherwise vanish. A newer installed build hides it.
+    // Kept across rotation. A quiet result does not clear a banner already found
+    // in this process. A newer installed build hides it. Errors stay silent.
     var versionCode by rememberSaveable { mutableStateOf(0) }
     var versionName by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
     LaunchedEffect(Unit) {
-        val info = try {
+        val result = try {
             // DATA-FLOW: update metadata, from the relay, not encrypted, no user data.
             Updater.check(context)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            null
+            UpdateCheck.Error
         }
-        if (info != null) {
-            versionCode = info.versionCode
-            versionName = info.versionName
-            notes = info.notes
+        if (result is UpdateCheck.Available) {
+            versionCode = result.info.versionCode
+            versionName = result.info.versionName
+            notes = result.info.notes
         }
     }
     val update = if (versionCode > BuildConfig.VERSION_CODE) {
@@ -139,24 +140,38 @@ fun HomeScreen(onTrack: () -> Unit) {
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val partnerStatus = when {
+                                sharing && loc?.live == true -> stringResource(R.string.live)
+                                sharing -> stringResource(R.string.sharing_on)
+                                heard -> stringResource(R.string.sharing_paused)
+                                else -> null
+                            }
                             if (sharing) {
                                 Spacer(Modifier.width(6.dp))
                                 VerifiedDot()
                             }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (loc?.live == true) {
-                                StatusChip(stringResource(R.string.live), emphasized = true)
-                            } else if (heard && !sharing) {
-                                StatusChip(stringResource(R.string.sharing_paused), emphasized = false)
+                            if (partnerStatus != null) {
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    partnerStatus,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = LdColors.colors.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val batteryText = if (loc == null || loc.bat !in 0..100) {
+                        stringResource(R.string.battery_unknown_short)
+                    } else {
+                        batteryPhrase(context, loc.bat, loc.chg)
+                    }
                     StatTile(
                         stringResource(R.string.stat_battery),
-                        batteryPhrase(context, loc?.bat ?: -1, loc?.chg == true),
+                        batteryText,
                         Modifier.weight(1f),
                     )
                     StatTile(stringResource(R.string.stat_seen), seenValue, Modifier.weight(1f))
