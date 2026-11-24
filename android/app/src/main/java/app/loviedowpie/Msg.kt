@@ -262,6 +262,8 @@ object Inbox {
                 "ring" -> RingService.start(context)
                 "ringstop" -> RingService.stop(context)
                 "profile" -> applyProfile(context, json)
+                "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
+                "draw" -> DrawInbound.handle(context, json)
             }
         } catch (_: Exception) {
             // One bad field should not drop the rest of the mailbox.
