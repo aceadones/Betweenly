@@ -19,10 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -38,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -80,7 +79,7 @@ fun PairScreen(onPaired: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -92,7 +91,7 @@ fun PairScreen(onPaired: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineMedium)
+            Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineLarge)
             when {
                 ui.phase == PairPhase.WaitingShow || ui.phase == PairPhase.WaitingJoin -> Waiting(
                     code = ui.shownCode,
@@ -143,17 +142,21 @@ private fun Choose(onShow: () -> Unit, onEnter: () -> Unit) {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Button(onClick = onShow, modifier = Modifier.fillMaxWidth().height(64.dp)) {
-        Text(stringResource(R.string.pair_show), style = MaterialTheme.typography.titleMedium)
-    }
+    PrimaryPill(
+        text = stringResource(R.string.pair_show),
+        onClick = onShow,
+        modifier = Modifier.fillMaxWidth(),
+    )
     Text(
         stringResource(R.string.pair_enter_help),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    OutlinedButton(onClick = onEnter, modifier = Modifier.fillMaxWidth().height(64.dp)) {
-        Text(stringResource(R.string.pair_enter), style = MaterialTheme.typography.titleMedium)
-    }
+    SecondaryPill(
+        text = stringResource(R.string.pair_enter),
+        onClick = onEnter,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -191,13 +194,12 @@ private fun EnterForm(
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    Button(
+    PrimaryPill(
+        text = stringResource(R.string.pair_join),
         onClick = onJoin,
         enabled = accepted,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-    ) {
-        Text(stringResource(R.string.pair_join))
-    }
+        modifier = Modifier.fillMaxWidth(),
+    )
     TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
 }
 
@@ -215,8 +217,8 @@ private fun Waiting(
             style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCopy) { Text(stringResource(R.string.pair_copy)) }
-            OutlinedButton(onClick = onShare) { Text(stringResource(R.string.pair_share)) }
+            SecondaryPill(text = stringResource(R.string.pair_copy), onClick = onCopy)
+            SecondaryPill(text = stringResource(R.string.pair_share), onClick = onShare)
         }
     } else if (showLetters) {
         Text(stringResource(R.string.pair_making), style = MaterialTheme.typography.bodyLarge)
@@ -242,9 +244,11 @@ private fun Safety(number: String, onContinue: () -> Unit) {
         style = MaterialTheme.typography.displaySmall.copy(fontFamily = FontFamily.Monospace),
     )
     Text(stringResource(R.string.pair_safety_body), style = MaterialTheme.typography.bodyLarge)
-    Button(onClick = onContinue, modifier = Modifier.fillMaxWidth().height(56.dp)) {
-        Text(stringResource(R.string.pair_continue))
-    }
+    PrimaryPill(
+        text = stringResource(R.string.pair_continue),
+        onClick = onContinue,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable

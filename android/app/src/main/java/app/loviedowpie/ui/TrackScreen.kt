@@ -6,21 +6,19 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,8 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -74,7 +74,7 @@ fun TrackScreen(onBack: () -> Unit) {
     val sharingOff = lat != null && lon != null && !sharing
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -104,31 +104,15 @@ fun TrackScreen(onBack: () -> Unit) {
                         )
                     }
                 }
-                Surface(
+                GlassIconButton(
+                    onClick = onBack,
+                    icon = Icons.Filled.ArrowBack,
+                    description = stringResource(R.string.back),
                     modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    shadowElevation = 0.dp,
-                    tonalElevation = 0.dp,
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                }
+                )
                 if (loc?.live == true) {
-                    Surface(
-                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shadowElevation = 0.dp,
-                        tonalElevation = 0.dp,
-                    ) {
-                        Text(
-                            stringResource(R.string.live),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
+                    Box(Modifier.align(Alignment.TopEnd).padding(12.dp)) {
+                        StatusChip(stringResource(R.string.live), emphasized = true)
                     }
                 }
                 if (sharingOff) {
@@ -138,25 +122,20 @@ fun TrackScreen(onBack: () -> Unit) {
                     } else {
                         stringResource(R.string.no_update_yet)
                     }
-                    Surface(
+                    Text(
+                        stringResource(R.string.location_off_last, whenSeen),
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = 64.dp, start = 16.dp, end = 16.dp)
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-                        shadowElevation = 0.dp,
-                        tonalElevation = 0.dp,
-                    ) {
-                        Text(
-                            stringResource(R.string.location_off_last, whenSeen),
-                            modifier = Modifier.padding(12.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                            .fillMaxWidth()
+                            .ldGlass(RoundedCornerShape(24.dp))
+                            .padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = LdColors.colors.ink,
+                    )
                 }
                 if (showCard && loc != null) {
-                    Surface(
+                    Column(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(
@@ -164,42 +143,79 @@ fun TrackScreen(onBack: () -> Unit) {
                                 start = 16.dp,
                                 end = 16.dp,
                             )
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        shadowElevation = 0.dp,
-                        tonalElevation = 0.dp,
+                            .fillMaxWidth()
+                            .ldGlass(RoundedCornerShape(24.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(name, style = MaterialTheme.typography.titleMedium)
+                        Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)
+                        Text(
+                            batteryPhrase(context, loc.bat, loc.chg),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        if (loc.lastSeen > 0L) {
                             Text(
-                                batteryPhrase(context, loc.bat, loc.chg),
+                                stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            if (loc.lastSeen > 0L) {
-                                Text(
-                                    stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            } else {
-                                Text(stringResource(R.string.no_update_yet), style = MaterialTheme.typography.bodyMedium)
-                            }
+                        } else {
+                            Text(stringResource(R.string.no_update_yet), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
                 if (lat != null && lon != null) {
-                    Button(
+                    SecondaryPill(
+                        text = stringResource(R.string.recenter),
                         onClick = { recenter++ },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 36.dp),
-                    ) {
-                        Text(stringResource(R.string.recenter))
-                    }
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 12.dp),
+                    )
                 }
             }
-            RingButton(snackbar, Modifier.fillMaxWidth().padding(16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .ldGlass(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RoundAvatar(revision, { Store.partnerAvatar(context) }, name, 48.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = LdColors.colors.ink,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (sharing) {
+                                Spacer(Modifier.width(6.dp))
+                                VerifiedDot()
+                            }
+                        }
+                        if (loc != null) {
+                            Text(
+                                batteryPhrase(context, loc.bat, loc.chg),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LdColors.colors.inkMuted,
+                            )
+                            Text(
+                                if (loc.lastSeen > 0L) {
+                                    stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now))
+                                } else {
+                                    stringResource(R.string.no_update_yet)
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LdColors.colors.inkMuted,
+                            )
+                        }
+                    }
+                }
+                RingButton(snackbar, Modifier.fillMaxWidth())
+            }
         }
     }
 }

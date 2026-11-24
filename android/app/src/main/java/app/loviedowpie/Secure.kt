@@ -19,6 +19,9 @@ import javax.crypto.spec.GCMParameterSpec
  * (after the device has been unlocked once since boot). Each value is stored
  * as base64(iv + ciphertext) in the private SharedPreferences file "secure".
  *
+ * [encrypt] and [decrypt] use the same key for chat message JSON and attachment
+ * files. Those blobs are not written into these preferences.
+ *
  * DATA-FLOW: nothing here touches the network. Plaintext exists only in memory
  * while a caller is using it.
  */
@@ -35,21 +38,23 @@ object Secure {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
+     * Encrypts [bytes] with the Keystore key. The result is `iv || ciphertext`
+     * (12-byte IV, then AES-GCM ciphertext including the tag), or null if the
+     * key is unavailable. Does not write to disk.
+     */
+    fun encrypt(bytes: ByteArray): ByteArray? = synchronized(lock) { encryptRaw(bytes) }
+
+    /** Opens a buffer produced by [encrypt], or null if it is missing, short, or tampered. */
+    fun decrypt(packed: ByteArray): ByteArray? = synchronized(lock) { decryptRaw(packed) }
+
+    /**
      * Encrypt [bytes] and store them under [name]. Failures are swallowed so a
      * Keystore problem cannot crash the process; [get] then returns null.
      */
     fun put(context: Context, name: String, bytes: ByteArray) {
         synchronized(lock) {
             try {
-                val secret = key() ?: return
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.ENCRYPT_MODE, secret)
-                val iv = cipher.iv
-                if (iv == null || iv.size != IV_LEN) return
-                val ct = cipher.doFinal(bytes)
-                val packed = ByteArray(iv.size + ct.size)
-                iv.copyInto(packed)
-                ct.copyInto(packed, destinationOffset = iv.size)
+                val packed = encryptRaw(bytes) ?: return
                 val encoded = Base64.encodeToString(packed, Base64.NO_WRAP)
                 prefs(context).edit().putString(name, encoded).commit()
             } catch (_: Exception) {
@@ -64,17 +69,46 @@ object Secure {
             return try {
                 val encoded = prefs(context).getString(name, null) ?: return null
                 val packed = Base64.decode(encoded, Base64.NO_WRAP)
-                if (packed.size < IV_LEN + TAG_BITS / 8) return null
-                val secret = key() ?: return null
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                val spec = GCMParameterSpec(TAG_BITS, packed.copyOfRange(0, IV_LEN))
-                cipher.init(Cipher.DECRYPT_MODE, secret, spec)
-                cipher.doFinal(packed, IV_LEN, packed.size - IV_LEN)
+                decryptRaw(packed)
             } catch (_: Exception) {
                 // Includes a locked Keystore or a tampered value. Do not delete:
                 // a transient failure must not wipe the session.
                 null
             }
+        }
+    }
+
+    private fun encryptRaw(bytes: ByteArray): ByteArray? {
+        return try {
+            val secret = key() ?: return null
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secret)
+            val iv = cipher.iv
+            if (iv == null || iv.size != IV_LEN) return null
+            val ct = cipher.doFinal(bytes)
+            val packed = ByteArray(iv.size + ct.size)
+            iv.copyInto(packed)
+            ct.copyInto(packed, destinationOffset = iv.size)
+            packed
+        } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
+            null
+        }
+    }
+
+    private fun decryptRaw(packed: ByteArray): ByteArray? {
+        return try {
+            if (packed.size < IV_LEN + TAG_BITS / 8) return null
+            val secret = key() ?: return null
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val spec = GCMParameterSpec(TAG_BITS, packed.copyOfRange(0, IV_LEN))
+            cipher.init(Cipher.DECRYPT_MODE, secret, spec)
+            cipher.doFinal(packed, IV_LEN, packed.size - IV_LEN)
+        } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
+            null
         }
     }
 

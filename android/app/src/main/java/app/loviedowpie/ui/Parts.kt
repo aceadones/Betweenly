@@ -18,16 +18,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -44,10 +42,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import app.loviedowpie.LocationSharing
 import app.loviedowpie.Msg
 import app.loviedowpie.Outbox
@@ -67,21 +65,25 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (onBack != null) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-            }
+            GlassIconButton(
+                onClick = onBack,
+                icon = Icons.Filled.ArrowBack,
+                description = stringResource(R.string.back),
+            )
+            Spacer(Modifier.width(8.dp))
         }
-        Text(title, style = MaterialTheme.typography.headlineMedium)
+        Text(title, style = MaterialTheme.typography.headlineMedium, color = LdColors.colors.ink)
     }
 }
 
 /** A small status pill: "Live" or "Sharing paused". */
 @Composable
 fun StatusChip(text: String, emphasized: Boolean) {
-    val colors = MaterialTheme.colorScheme
+    val c = LdColors.colors
     Surface(
         shape = RoundedCornerShape(50),
-        color = if (emphasized) colors.primaryContainer else colors.secondaryContainer,
+        color = if (emphasized) c.chipOn else c.glass,
+        border = BorderStroke(1.dp, c.glassBorder),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
     ) {
@@ -89,7 +91,7 @@ fun StatusChip(text: String, emphasized: Boolean) {
             text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelLarge,
-            color = if (emphasized) colors.onPrimaryContainer else colors.onSecondaryContainer,
+            color = if (emphasized) c.chipOnInk else c.ink,
         )
     }
 }
@@ -122,7 +124,10 @@ fun RoundAvatar(
         Image(
             bitmap = shown.asImageBitmap(),
             contentDescription = null,
-            modifier = modifier.size(size).clip(CircleShape),
+            modifier = modifier
+                .size(size)
+                .border(2.dp, LdColors.colors.chipOn, CircleShape)
+                .clip(CircleShape),
             contentScale = ContentScale.Crop,
         )
     } else {
@@ -133,8 +138,9 @@ fun RoundAvatar(
 @Composable
 private fun BoxInitial(letter: String, size: Dp, modifier: Modifier) {
     Box(
-        modifier = modifier
+        modifier =         modifier
             .size(size)
+            .border(2.dp, LdColors.colors.chipOn, CircleShape)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primaryContainer),
         contentAlignment = Alignment.Center,
@@ -244,7 +250,7 @@ fun ShareToggles(snackbar: SnackbarHostState) {
 }
 
 @Composable
-private fun ToggleRow(
+internal fun ToggleRow(
     title: String,
     help: String,
     checked: Boolean,
@@ -275,9 +281,10 @@ fun RingButton(snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
-    Button(
+    PrimaryPill(
+        text = stringResource(R.string.ring_partner),
         onClick = {
-            if (sending) return@Button
+            if (sending) return@PrimaryPill
             sending = true
             scope.launch {
                 val ok = try {
@@ -296,9 +303,5 @@ fun RingButton(snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
         },
         enabled = !sending,
         modifier = modifier,
-    ) {
-        Icon(Icons.Filled.Notifications, contentDescription = null)
-        Spacer(Modifier.width(8.dp))
-        Text(stringResource(R.string.ring_partner))
-    }
+    )
 }

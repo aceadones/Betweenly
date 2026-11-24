@@ -105,7 +105,8 @@ fun TileMap(
 ) {
     val context = LocalContext.current
     val dark = isSystemInDarkTheme()
-    val placeholder = if (dark) Color(0xFF242424) else Color(0xFFE4E0DC)
+    val placeholder = if (dark) LdColors.mapPlaceholderDark else LdColors.mapPlaceholderLight
+    val radar = LdColors.primary
     val tileFilter = if (dark) darkTileFilter else null
     val ring = MaterialTheme.colorScheme.primary
     val fill = MaterialTheme.colorScheme.primaryContainer
@@ -279,6 +280,7 @@ fun TileMap(
                         onFill = onFill,
                         ring = ring,
                         halo = halo,
+                        radar = radar,
                     )
                 }
             }
@@ -287,8 +289,8 @@ fun TileMap(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 8.dp, bottom = 8.dp, end = 88.dp),
-            shape = RoundedCornerShape(4.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            shape = RoundedCornerShape(12.dp),
+            color = LdColors.colors.glassStrong,
             shadowElevation = 0.dp,
             tonalElevation = 0.dp,
         ) {
@@ -296,6 +298,7 @@ fun TileMap(
                 stringResource(R.string.map_attribution),
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
+                color = LdColors.colors.ink,
             )
         }
     }
@@ -462,7 +465,21 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMarker(
     onFill: Color,
     ring: Color,
     halo: Color,
+    radar: Color,
 ) {
+    drawCircle(color = radar.copy(alpha = 0.16f), radius = radius * 2.7f, center = center)
+    drawCircle(
+        color = radar.copy(alpha = 0.32f),
+        radius = radius * 2.05f,
+        center = center,
+        style = Stroke(width = 1.5.dp.toPx()),
+    )
+    drawCircle(
+        color = radar.copy(alpha = 0.45f),
+        radius = radius * 1.5f,
+        center = center,
+        style = Stroke(width = 1.5.dp.toPx()),
+    )
     drawCircle(color = halo, radius = radius + 3.dp.toPx(), center = center)
     val bmp = bitmap
     if (bmp != null && !bmp.isRecycled && bmp.width > 0 && bmp.height > 0) {

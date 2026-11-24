@@ -13,11 +13,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -39,6 +40,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -105,8 +108,34 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
+        bottomBar = {
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PrimaryPill(
+                    text = stringResource(R.string.onboarding_continue),
+                    onClick = {
+                        Store.setMyName(context, name.trim())
+                        UiFlags.setOnboardingDone(context)
+                        onDone()
+                    },
+                    enabled = canContinue,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.onboarding_footnote),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LdColors.colors.inkMuted,
+                )
+            }
+        },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -116,8 +145,12 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.onboarding_title), style = MaterialTheme.typography.headlineMedium)
-            Text(stringResource(R.string.onboarding_intro), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.onboarding_title), style = MaterialTheme.typography.headlineLarge)
+            Text(
+                stringResource(R.string.onboarding_intro),
+                style = MaterialTheme.typography.bodyLarge,
+                color = LdColors.colors.inkMuted,
+            )
             OutlinedTextField(
                 value = name,
                 onValueChange = { value ->
@@ -206,22 +239,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.clickable(onClick = onPrivacy),
             )
-            Text(
-                stringResource(R.string.onboarding_footnote),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = {
-                    Store.setMyName(context, name.trim())
-                    UiFlags.setOnboardingDone(context)
-                    onDone()
-                },
-                enabled = canContinue,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.onboarding_continue))
-            }
         }
     }
 }
@@ -234,7 +251,10 @@ private fun PermissionRow(
     onAllow: (() -> Unit)?,
     onSettings: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Text(title, style = MaterialTheme.typography.titleMedium)
         Text(
             body,
@@ -247,9 +267,11 @@ private fun PermissionRow(
             color = if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!allowed && onAllow != null) {
-            Button(onClick = onAllow, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.perm_allow))
-            }
+            SecondaryPill(
+                text = stringResource(R.string.perm_allow),
+                onClick = onAllow,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         if (!allowed) {
             TextButton(onClick = onSettings) {

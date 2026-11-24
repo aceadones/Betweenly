@@ -7,23 +7,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,11 +27,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import app.loviedowpie.BuildConfig
 import app.loviedowpie.R
 import app.loviedowpie.Store
@@ -47,11 +41,12 @@ import app.loviedowpie.Updater
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The paired home screen: partner card, the two sharing switches, the map
- * button, ring, and settings. An update banner shows when [Updater.check] finds one.
+ * Location tab: partner card, the two sharing switches, the map button, and
+ * ring. The shell draws the status bar inset and the bottom bar, so this
+ * scaffold adds none of its own. An update banner shows when [Updater.check] finds one.
  */
 @Composable
-fun HomeScreen(onTrack: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(onTrack: () -> Unit) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val revision by Store.changes.collectAsState()
@@ -88,10 +83,20 @@ fun HomeScreen(onTrack: () -> Unit, onSettings: () -> Unit) {
     val sharing = remember(revision) { Store.partnerSharing(context) }
     val profileKnown = remember(revision) { Store.partnerProfileKnown(context) }
     val heard = loc != null || profileKnown
+    val myName = remember(revision) {
+        Store.myName(context).ifBlank { context.getString(R.string.partner_fallback) }
+    }
+    val seenValue = if (loc == null || loc.lastSeen <= 0L) {
+        stringResource(R.string.no_update_yet)
+    } else {
+        lastSeenPhrase(context, loc.lastSeen, now)
+    }
+    val accuracyValue = loc?.acc?.takeIf { it > 0f }?.let { accuracyPhrase(context, it) }
+        ?: stringResource(R.string.stat_none)
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(
@@ -102,44 +107,43 @@ fun HomeScreen(onTrack: () -> Unit, onSettings: () -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium,
-                    modifier = Modifier.weight(1f),
+            GreetingHeader(
+                name = myName,
+                revision = revision,
+                loadAvatar = { Store.myAvatar(context) },
+            ) {
+                GlassIconButton(
+                    onClick = onTrack,
+                    icon = Icons.Filled.LocationOn,
+                    description = stringResource(R.string.track_map),
                 )
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.settings))
-                }
             }
             update?.let { UpdateBanner(it) }
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp,
+            Column(
+                modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     RoundAvatar(revision, { Store.partnerAvatar(context) }, name, 72.dp)
                     Spacer(Modifier.width(16.dp))
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(name, style = MaterialTheme.typography.titleLarge)
-                        if (loc == null || loc.lastSeen <= 0L) {
-                            Text(stringResource(R.string.no_update_yet), style = MaterialTheme.typography.bodyMedium)
-                        } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
-                                style = MaterialTheme.typography.bodyMedium,
+                                name,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = LdColors.colors.ink,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
+                            if (sharing) {
+                                Spacer(Modifier.width(6.dp))
+                                VerifiedDot()
+                            }
                         }
-                        Text(
-                            batteryPhrase(context, loc?.bat ?: -1, loc?.chg == true),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             if (loc?.live == true) {
                                 StatusChip(stringResource(R.string.live), emphasized = true)
@@ -147,24 +151,30 @@ fun HomeScreen(onTrack: () -> Unit, onSettings: () -> Unit) {
                                 StatusChip(stringResource(R.string.sharing_paused), emphasized = false)
                             }
                         }
-                        val acc = loc?.acc
-                        if (acc != null && acc > 0f) {
-                            Text(
-                                accuracyPhrase(context, acc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatTile(
+                        stringResource(R.string.stat_battery),
+                        batteryPhrase(context, loc?.bat ?: -1, loc?.chg == true),
+                        Modifier.weight(1f),
+                    )
+                    StatTile(stringResource(R.string.stat_seen), seenValue, Modifier.weight(1f))
+                    StatTile(stringResource(R.string.stat_accuracy), accuracyValue, Modifier.weight(1f))
+                }
             }
-            Text(stringResource(R.string.you), style = MaterialTheme.typography.titleMedium)
-            ShareToggles(snackbar)
-            Button(onClick = onTrack, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Icon(Icons.Filled.LocationOn, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.track_map))
+            Column(
+                modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.you), style = MaterialTheme.typography.titleMedium)
+                ShareToggles(snackbar)
             }
+            PrimaryPill(
+                text = stringResource(R.string.track_map),
+                onClick = onTrack,
+                modifier = Modifier.fillMaxWidth(),
+            )
             RingButton(snackbar, Modifier.fillMaxWidth())
         }
     }

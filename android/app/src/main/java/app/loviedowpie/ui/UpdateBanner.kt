@@ -6,12 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,27 +47,20 @@ fun UpdateBanner(info: UpdateInfo, modifier: Modifier = Modifier) {
     val apk = path?.let { File(it) }?.takeIf { it.isFile }
     val label = info.versionName.ifBlank { info.versionCode.toString() }
 
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
+    Column(
+        modifier = modifier.fillMaxWidth().ldGlass().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
             Text(
                 stringResource(R.string.update_available, label),
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = LdColors.colors.ink,
             )
             if (info.notes.isNotBlank()) {
                 Text(
                     info.notes,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = LdColors.colors.inkMuted,
                     maxLines = 6,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -136,6 +127,5 @@ fun UpdateBanner(info: UpdateInfo, modifier: Modifier = Modifier) {
                     Text(stringResource(R.string.update_install))
                 }
             }
-        }
     }
 }

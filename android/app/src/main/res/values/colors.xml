@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="widget_background">#FFF6F4</color>
-    <color name="widget_tile">#FFFFFFFF</color>
-    <color name="widget_tile_active">#F6D5DB</color>
-    <color name="widget_icon">#8A3144</color>
+    <color name="window_background">#E7F5FF</color>
+    <color name="widget_background">#D9FFFFFF</color>
+    <color name="widget_tile">#B3FFFFFF</color>
+    <color name="widget_tile_active">#FFD6E8FF</color>
+    <color name="widget_icon">#185FC4</color>
+    <color name="widget_border">#99FFFFFF</color>
 </resources>

@@ -22,6 +22,15 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Lets the UI ask to run the sharing alarm during doze. Not requested automatically. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- In-app camera. Optional: the rest of the app still runs if this is denied or missing. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Sound on a video. If this is denied, the video is recorded without audio. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- These permissions would otherwise mark the hardware as required. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:name=".App"
@@ -100,6 +109,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".ui.DrawingWidget"
+            android:exported="true"
+            android:label="@string/widget_drawing_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/drawing_widget_info" />
         </receiver>
 
         <receiver
