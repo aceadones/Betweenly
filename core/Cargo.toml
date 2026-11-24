@@ -1,0 +1,25 @@
+[package]
+name = "loviedowpie-core"
+version = "0.1.0"
+edition = "2021"
+description = "Loviedowpie crypto + pairing core. No network code lives here."
+license = "MIT"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+spake2 = "0.4"
+hkdf = "0.12"
+sha2 = "0.10"
+chacha20poly1305 = "0.10"
+getrandom = "0.2"
+zeroize = "1"
+jni = { version = "0.21", optional = true }
+
+[features]
+default = []
+jni-api = ["dep:jni"]
+
+[dev-dependencies]
+base64 = "0.22"

@@ -1,0 +1,16 @@
+target/
+*.keystore
+*.jks
+local.properties
+google-services.json
+.dev.vars
+.wrangler/
+.agent/
+android/app/src/main/jniLibs/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+node_modules/
+relay/node_modules/
+*.log
