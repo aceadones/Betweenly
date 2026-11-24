@@ -124,3 +124,28 @@ pub extern "system" fn Java_app_loviedowpie_Core_sessionInfo<'l>(mut env: JNIEnv
     let _ = SESSION_LEN;
     jstr(&mut env, &out)
 }
+
+/// Returns 32-byte key followed by (nonce||ciphertext). Empty on error.
+#[no_mangle]
+pub extern "system" fn Java_app_loviedowpie_Core_fileEncrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, plain: JByteArray<'l>) -> JByteArray<'l> {
+    let pt = env.convert_byte_array(&plain).unwrap_or_default();
+    match crate::file_encrypt(&pt) {
+        Ok((k, ct)) => {
+            let mut out = k.to_vec();
+            out.extend_from_slice(&ct);
+            env.byte_array_from_slice(&out).unwrap_or_default()
+        }
+        Err(_) => empty(&mut env),
+    }
+}
+
+/// Empty on error (wrong key / tampered).
+#[no_mangle]
+pub extern "system" fn Java_app_loviedowpie_Core_fileDecrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, key: JByteArray<'l>, data: JByteArray<'l>) -> JByteArray<'l> {
+    let k = env.convert_byte_array(&key).unwrap_or_default();
+    let d = env.convert_byte_array(&data).unwrap_or_default();
+    match crate::file_decrypt(&k, &d) {
+        Ok(pt) => env.byte_array_from_slice(&pt).unwrap_or_default(),
+        Err(_) => empty(&mut env),
+    }
+}

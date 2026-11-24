@@ -102,6 +102,33 @@ impl Pairing {
     }
 }
 
+/// Encrypts a whole file with a fresh random one-time key. Returns (key, nonce||ciphertext).
+/// The key travels to the partner inside an end-to-end encrypted chat message; the
+/// relay only ever stores the ciphertext.
+pub fn file_encrypt(plain: &[u8]) -> Result<([u8; 32], Vec<u8>), Error> {
+    let mut key = [0u8; 32];
+    getrandom::getrandom(&mut key).map_err(|_| Error::Random)?;
+    let mut nonce = [0u8; 24];
+    getrandom::getrandom(&mut nonce).map_err(|_| Error::Random)?;
+    let c = XChaCha20Poly1305::new((&key).into());
+    let ct = c
+        .encrypt(XNonce::from_slice(&nonce), Payload { msg: plain, aad: b"file" })
+        .map_err(|_| Error::Crypto)?;
+    let mut out = nonce.to_vec();
+    out.extend_from_slice(&ct);
+    Ok((key, out))
+}
+
+pub fn file_decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>, Error> {
+    if key.len() != 32 || data.len() < 24 + 16 {
+        return Err(Error::Malformed);
+    }
+    let (nonce, ct) = data.split_at(24);
+    let c = XChaCha20Poly1305::new(key.into());
+    c.decrypt(XNonce::from_slice(nonce), Payload { msg: ct, aad: b"file" })
+        .map_err(|_| Error::Crypto)
+}
+
 /// Long-lived pair state. Persist `to_bytes()` in Android Keystore-wrapped storage.
 pub struct Session {
     key: [u8; 32],
@@ -268,6 +295,16 @@ mod tests {
         let last = m2.len() - 1;
         m2[last] ^= 1;
         assert_eq!(b.open(&m2), Err(Error::Crypto));
+    }
+
+    #[test]
+    fn file_roundtrip() {
+        let (k, ct) = file_encrypt(b"photo bytes").unwrap();
+        assert_eq!(file_decrypt(&k, &ct).unwrap(), b"photo bytes");
+        let mut bad = ct.clone();
+        let l = bad.len() - 1;
+        bad[l] ^= 1;
+        assert_eq!(file_decrypt(&k, &bad), Err(Error::Crypto));
     }
 
     #[test]

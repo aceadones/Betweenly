@@ -15,6 +15,8 @@
  *   POST /box/{mailbox}[?wake=1]              append blob; wake=1 also sends an FCM ping
  *   GET  /box/{mailbox}                       fetch and clear all blobs
  *   PUT  /token/{mailbox}                     register my FCM token for wake-ups
+ *   PUT  /file/{id}                           upload an encrypted attachment (<= 24 MB, kept 7 days)
+ *   GET  /file/{id}                           download it (id is a 128-bit secret known to the pair)
  *   GET  /update/latest                       public JSON about the newest app release
  *   GET  /update/apk                          public APK of the newest release
  * (Updates are published by the developer with `wrangler kv key put`; nothing user-specific.)
@@ -31,6 +33,8 @@ export interface Env {
 const HEX32 = /^[0-9a-f]{32}$/;
 const MAX_BLOB = 96 * 1024; // avatar (~64 KB) + overhead
 const MAX_QUEUE = 20;
+const MAX_FILE = 24 * 1024 * 1024; // KV value limit is 25 MiB
+const FILE_TTL = 7 * 86400;
 const PAIR_TTL = 600; // 10 min
 const BOX_TTL = 86400; // 24 h
 const PAIR_MAX_JOINS = 3; // the joiner (role b) may write at most 3 times: a wrong guess burns the code
@@ -83,6 +87,22 @@ export default {
         }
         if (req.method === "GET") {
           return json({ blobs: await box.drain() });
+        }
+      }
+
+      // ---- encrypted attachments ----------------------------------------
+      // DATA-FLOW: opaque ciphertext only; the key is inside the end-to-end encrypted chat message.
+      if (p[0] === "file" && HEX32.test(p[1] ?? "")) {
+        if (req.method === "PUT") {
+          const data = await req.arrayBuffer();
+          if (data.byteLength === 0 || data.byteLength > MAX_FILE) return json({ error: "bad size" }, 413);
+          if (await env.STORE.get(`file:${p[1]}`, "stream")) return json({ error: "exists" }, 409);
+          await env.STORE.put(`file:${p[1]}`, data, { expirationTtl: FILE_TTL });
+          return json({ ok: true });
+        }
+        if (req.method === "GET") {
+          const f = await env.STORE.get(`file:${p[1]}`, "arrayBuffer");
+          return f === null ? json({ error: "not found" }, 404) : new Response(f, { headers: { "content-type": "application/octet-stream" } });
         }
       }
 

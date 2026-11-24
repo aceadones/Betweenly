@@ -18,10 +18,10 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "app.loviedowpie"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "2.0.0"
         ndk { abiFilters += listOf("arm64-v8a") }
         // DATA-FLOW: the only server the app talks to for messages/updates (besides map tiles + FCM).
         buildConfigField("String", "RELAY_URL", "\"${prop("relay.url", "https://loviedowpie-relay.example.workers.dev")}\"")
@@ -81,5 +81,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
+    // Camera for the in-app camera (V2). CameraX = Google's thin wrapper over Camera2.
+    val camerax = "1.4.2"
+    implementation("androidx.camera:camera-core:$camerax")
+    implementation("androidx.camera:camera-camera2:$camerax")
+    implementation("androidx.camera:camera-lifecycle:$camerax")
+    implementation("androidx.camera:camera-video:$camerax")
+    implementation("androidx.camera:camera-view:$camerax")
     implementation("com.google.firebase:firebase-messaging:24.1.1") // Messaging only. No Analytics.
 }

@@ -23,4 +23,9 @@ object Core {
     external fun open(session: ByteArray, data: ByteArray): ByteArray
     /** which: 0 = safety number "123 456", 1 = my inbox id (hex), 2 = my outbox id (hex). */
     external fun sessionInfo(session: ByteArray, which: Long): String
+
+    /** One-time file encryption: returns 32-byte key + (nonce||ciphertext); empty on error. */
+    external fun fileEncrypt(plain: ByteArray): ByteArray
+    /** Decrypts what fileEncrypt produced; empty on error. */
+    external fun fileDecrypt(key: ByteArray, data: ByteArray): ByteArray
 }
