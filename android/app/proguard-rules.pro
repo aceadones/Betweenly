@@ -1,1 +1,1 @@
--keep class app.loviedowpie.Core { *; }
+-keep class com.nextlayer.betweenly.Core { *; }

@@ -1,4 +1,4 @@
-//! Loviedowpie core: pairing code, PAKE key agreement, message encryption.
+//! Betweenly core: pairing code, PAKE key agreement, message encryption.
 //!
 //! DATA-FLOW: this crate does NO networking and NO disk I/O. It only turns
 //! bytes into other bytes. The Android app moves those bytes to/from the relay.
@@ -25,7 +25,8 @@ use zeroize::Zeroize;
 /// Unambiguous alphabet (no 0/O/1/I): 32 symbols, so a random byte maps evenly (256 % 32 == 0).
 const ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 pub const CODE_LEN: usize = 8;
-const APP_ID: &[u8] = b"loviedowpie-v1";
+/// Domain separation for SPAKE2 and HKDF. Both phones must run this build.
+const APP_ID: &[u8] = b"betweenly-v1";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {

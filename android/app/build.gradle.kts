@@ -14,14 +14,14 @@ val localProps = Properties().apply {
 fun prop(k: String, d: String = "") = localProps.getProperty(k) ?: d
 
 android {
-    namespace = "app.loviedowpie"
+    namespace = "com.nextlayer.betweenly"
     compileSdk = 35
     defaultConfig {
-        applicationId = "app.loviedowpie"
+        applicationId = "com.nextlayer.betweenly"
         minSdk = 28
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2.0-beta"
+        versionCode = 1
+        versionName = "0.0.1"
         ndk { abiFilters += listOf("arm64-v8a") }
         // DATA-FLOW: the only server the app talks to for messages/updates (besides map tiles + FCM).
         buildConfigField("String", "RELAY_URL", "\"${prop("relay.url", "https://loviedowpie-relay.example.workers.dev")}\"")
@@ -36,7 +36,7 @@ android {
             if (ks.isNotEmpty()) {
                 storeFile = file(ks)
                 storePassword = prop("signing.password")
-                keyAlias = prop("signing.alias", "loviedowpie")
+                keyAlias = prop("signing.alias", "betweenly")
                 keyPassword = prop("signing.password")
             }
         }
@@ -65,7 +65,7 @@ val buildRust by tasks.registering(Exec::class) {
     environment("ANDROID_NDK_HOME", ndk)
     commandLine(
         "bash", "-lc",
-        "source \$HOME/.cargo/env && cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build -p loviedowpie-core --release --features jni-api"
+        "source \$HOME/.cargo/env && cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build -p betweenly-core --release --features jni-api"
     )
 }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(buildRust) }

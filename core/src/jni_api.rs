@@ -26,14 +26,14 @@ fn empty<'l>(env: &mut JNIEnv<'l>) -> JByteArray<'l> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_generateCode<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>) -> JString<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_generateCode<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>) -> JString<'l> {
     let c = generate_code().unwrap_or_default();
     jstr(&mut env, &c)
 }
 
 /// Canonical code, or "" if invalid.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_normalizeCode<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JString<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_normalizeCode<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JString<'l> {
     let s: String = env.get_string(&code).map(|s| s.into()).unwrap_or_default();
     let out = normalize_code(&s).unwrap_or_default();
     jstr(&mut env, &out)
@@ -41,7 +41,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_normalizeCode<'l>(mut env: JNIE
 
 /// 32-hex rendezvous id for the relay, or "" if code invalid.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_rendezvousHex<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JString<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_rendezvousHex<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JString<'l> {
     let s: String = env.get_string(&code).map(|s| s.into()).unwrap_or_default();
     let out = rendezvous_id(&s).map(|b| hex(&b)).unwrap_or_default();
     jstr(&mut env, &out)
@@ -49,7 +49,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_rendezvousHex<'l>(mut env: JNIE
 
 /// Returns 8-byte big-endian handle followed by the PAKE message. Empty on error.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_pairStart<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_pairStart<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, code: JString<'l>) -> JByteArray<'l> {
     let s: String = env.get_string(&code).map(|s| s.into()).unwrap_or_default();
     match Pairing::start(&s) {
         Ok((p, msg)) => {
@@ -67,7 +67,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_pairStart<'l>(mut env: JNIEnv<'
 
 /// Returns session bytes (80) or empty on failure.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_pairFinish<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, handle: jlong, theirs: JByteArray<'l>, initiator: jboolean) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_pairFinish<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, handle: jlong, theirs: JByteArray<'l>, initiator: jboolean) -> JByteArray<'l> {
     let msg = env.convert_byte_array(&theirs).unwrap_or_default();
     let p = PENDING.lock().unwrap().as_mut().and_then(|m| m.remove(&handle));
     match p.and_then(|p| p.finish(&msg).ok()) {
@@ -81,7 +81,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_pairFinish<'l>(mut env: JNIEnv<
 
 /// Returns new session bytes (80) followed by ciphertext. Empty on error.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_seal<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, plain: JByteArray<'l>) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_seal<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, plain: JByteArray<'l>) -> JByteArray<'l> {
     let sb = env.convert_byte_array(&session).unwrap_or_default();
     let pt = env.convert_byte_array(&plain).unwrap_or_default();
     let r = Session::from_bytes(&sb).and_then(|mut s| s.seal(&pt).map(|ct| (s.to_bytes(), ct)));
@@ -96,7 +96,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_seal<'l>(mut env: JNIEnv<'l>, _
 
 /// Returns new session bytes (80) followed by plaintext. Empty on error (tamper/replay).
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_open<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, data: JByteArray<'l>) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_open<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, data: JByteArray<'l>) -> JByteArray<'l> {
     let sb = env.convert_byte_array(&session).unwrap_or_default();
     let ct = env.convert_byte_array(&data).unwrap_or_default();
     let r = Session::from_bytes(&sb).and_then(|mut s| s.open(&ct).map(|pt| (s.to_bytes(), pt)));
@@ -111,7 +111,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_open<'l>(mut env: JNIEnv<'l>, _
 
 /// Which = 0 safety number, 1 inbox hex, 2 outbox hex.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_sessionInfo<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, which: jlong) -> JString<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_sessionInfo<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, session: JByteArray<'l>, which: jlong) -> JString<'l> {
     let sb = env.convert_byte_array(&session).unwrap_or_default();
     let out = match Session::from_bytes(&sb) {
         Ok(s) => match which {
@@ -127,7 +127,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_sessionInfo<'l>(mut env: JNIEnv
 
 /// Returns 32-byte key followed by (nonce||ciphertext). Empty on error.
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_fileEncrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, plain: JByteArray<'l>) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_fileEncrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, plain: JByteArray<'l>) -> JByteArray<'l> {
     let pt = env.convert_byte_array(&plain).unwrap_or_default();
     match crate::file_encrypt(&pt) {
         Ok((k, ct)) => {
@@ -141,7 +141,7 @@ pub extern "system" fn Java_app_loviedowpie_Core_fileEncrypt<'l>(mut env: JNIEnv
 
 /// Empty on error (wrong key / tampered).
 #[no_mangle]
-pub extern "system" fn Java_app_loviedowpie_Core_fileDecrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, key: JByteArray<'l>, data: JByteArray<'l>) -> JByteArray<'l> {
+pub extern "system" fn Java_com_nextlayer_betweenly_Core_fileDecrypt<'l>(mut env: JNIEnv<'l>, _c: JClass<'l>, key: JByteArray<'l>, data: JByteArray<'l>) -> JByteArray<'l> {
     let k = env.convert_byte_array(&key).unwrap_or_default();
     let d = env.convert_byte_array(&data).unwrap_or_default();
     match crate::file_decrypt(&k, &d) {

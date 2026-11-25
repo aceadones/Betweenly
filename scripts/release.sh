@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Builds the release APK, publishes it to the relay KV, and cuts a GitHub release.
-# Optional argument: a notes file. Otherwise the notes are "Loviedowpie <versionName>".
+# Optional argument: a notes file. Otherwise the notes are "Betweenly <versionName>".
 # This script is for the Mac toolchain in the repo docs. It does not run itself.
+# REPO stays aceadones/Loviedowpie until that GitHub repo is renamed.
 set -euo pipefail
+
+REPO="aceadones/Loviedowpie"
 
 echo "step 1: locate the repo"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -40,8 +43,8 @@ if [[ $# -ge 1 ]]; then
   cp "$1" "$NOTES_FILE"
   echo "notes from $1"
 else
-  printf '%s\n' "Loviedowpie ${VERSION_NAME}" > "$NOTES_FILE"
-  echo "notes: Loviedowpie ${VERSION_NAME}"
+  printf '%s\n' "Betweenly ${VERSION_NAME}" > "$NOTES_FILE"
+  echo "notes: Betweenly ${VERSION_NAME}"
 fi
 
 echo "step 5: assemble the release APK"
@@ -61,7 +64,7 @@ else
   echo "release APK was not produced" >&2
   exit 1
 fi
-DEST="$ROOT/dist/Loviedowpie-v${VERSION_NAME}.apk"
+DEST="$ROOT/dist/Betweenly-v${VERSION_NAME}.apk"
 cp "$APK_SRC" "$DEST"
 echo "copied $APK_SRC"
 echo "to $DEST"
@@ -105,5 +108,5 @@ cd "$ROOT"
 echo "uploaded upd:json and upd:apk"
 
 echo "step 10: create the GitHub release"
-gh release create "v${VERSION_NAME}" "$DEST" --title "v${VERSION_NAME}" --notes-file "$NOTES_FILE"
+gh release create "v${VERSION_NAME}" "$DEST" --repo "$REPO" --title "v${VERSION_NAME}" --notes-file "$NOTES_FILE"
 echo "done: v${VERSION_NAME}"

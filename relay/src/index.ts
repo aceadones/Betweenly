@@ -1,5 +1,5 @@
 /**
- * Loviedowpie relay. A dumb, blind mailbox.
+ * Betweenly relay. A dumb, blind mailbox.
  *
  * DATA-FLOW: this server stores ONLY
  *   - opaque encrypted blobs (it cannot decrypt them: keys exist only on the phones)

@@ -1,4 +1,4 @@
-# Loviedowpie manual tests
+# Betweenly manual tests
 
 Two setups. Run both before a release. Each item has steps, the result you should see, and a checkbox. Do not paste message text, coordinates, or keys into a bug report. Say which step failed.
 
@@ -224,7 +224,7 @@ Same steps, desktop `ring` instead of the button.
 
 ### Phones
 
-1. Add the Loviedowpie widget (Track, Ring, Live, Settings). It does not resize.
+1. Add the Betweenly widget (Track, Ring, Live, Settings). It does not resize.
 2. Tap Track, Ring, Live, Settings, in that order. Try again while unpaired (or after unpair, on a spare home screen if the widget remains).
 
 Expected: Track opens the map. Ring rings the partner. Live toggles and the tile shows on or off. Settings opens Profile. Unpaired, the widget asks you to pair and does not crash.
@@ -237,14 +237,14 @@ Same widget steps on the emulator home screen. The desktop tool is not involved,
 
 - [ ] Pass
 
-## Drawing widget, resize 2×2 through 4×4
+## Drawing widget, resize 2×2 through 5×4
 
 ### Phones
 
-1. Add the drawing widget. Resize from the smallest (about 2×2) through 3×3 to the largest (about 4×4).
-2. With no drawing yet, then after the partner sends one, then after you save one on this phone and the partner has none.
+1. Add the drawing widget. Resize from the smallest (about 2×2) up to the largest the picker allows: 5 cells wide and 4 cells tall (about 320dp by 250dp). It should not grow past that.
+2. With no drawing yet, then after you and your partner have both drawn on the shared page, then after New page (the widget goes quiet until someone draws again).
 
-Expected: empty state shows the short hint. After a drawing arrives, the picture fills the widget at each size without crashing. Tap opens the Activity tab. Rotating or relaunching keeps the latest picture.
+Expected: empty state shows the short hint. The widget shows the shared page (paper plus both layers) fitted to that size, with rounded corners, and does not crash at the largest size. Tap opens the Activity tab. Rotating or relaunching keeps the latest picture. A saved drawing still shows when a shared page has never been used.
 
 - [ ] Pass
 
@@ -253,7 +253,7 @@ Expected: empty state shows the short hint. After a drawing arrives, the picture
 1. Same resize pass on the emulator.
 2. Desktop: `draw <file.png>` with a small PNG.
 
-Expected: within a minute the widget shows that PNG. The tool's send line is http 200. A missing path prints an error and the widget stays as it was.
+Expected: within a minute the widget shows that PNG on the shared page. The tool's send line is http 200. A missing path prints an error and the widget stays as it was.
 
 - [ ] Pass
 
@@ -286,7 +286,7 @@ Expected: both appear in the emulator chat. The tool prints `RECEIVED` with the 
 2. B opens Chat.
 3. B backgrounds the app. A sends one more. B opens the app on Chat from the notification, if it is shown.
 
-Expected: while B is not on Chat, the Chat tab shows a badge with the count. Opening Chat clears it. The notification title is only "New message" (no text, no name, no count). With the app in the foreground on another tab, the badge updates and a heads-up notice is not required.
+Expected: while B is not on Chat, the Chat tab shows a badge with the count. Opening Chat clears it. With the default Off wording, a background notice is titled "Betweenly" and the text is "New message" (no message body, no name, no count). With the app in the foreground on another tab, the badge updates and no heads-up notice is posted.
 
 - [ ] Pass
 
@@ -480,12 +480,12 @@ Expected: the emulator shows the quote. The tool prints `"re"` on the received J
 
 ### Phones
 
-1. Open Activity, then the draw card. Draw a stroke. Undo, redo, and clear. Change paper.
+1. Open Activity, then the draw card. The canvas is Shared. Draw a stroke. Undo, redo, and clear (confirm; only your strokes go). Change paper.
 2. Open the brush sheet and try solid, eraser, and one other brush. Open color, size, and opacity.
-3. Save. Send to partner.
+3. Save. Send to partner. On the header, switch to Separate, draw, and send once. Switch back to Shared.
 4. On the other phone, open Activity without tapping send.
 
-Expected: the studio opens from the card, not from the dock. The partner's Activity card shows the drawing without a chat-style message. Save keeps a thumbnail on Profile. Send failure (airplane mode) shows an error and keeps the canvas. Undo, redo, and clear do what they say. Closing with unsaved strokes asks before discarding.
+Expected: the studio opens from the card, not from the dock. Shared is the default and stays that way after you leave. Save on the shared page keeps the combined picture (paper and both layers) on Profile. Send uploads your layer only. The partner's Activity card shows the shared page without a chat-style message. Send failure (airplane mode) shows an error and keeps the canvas. Undo, redo, and clear do what they say. In Separate, their drawing is only in the viewer. Closing with unsaved strokes asks before discarding.
 
 - [ ] Pass
 
@@ -494,7 +494,30 @@ Expected: the studio opens from the card, not from the dock. The partner's Activ
 1. Draw and save on the emulator. Send.
 2. Desktop: `draw <file.png>`.
 
-Expected: the tool prints `RECEIVED` for your send and writes a PNG under `/tmp/partner-in/`. The emulator Activity tab shows the desktop PNG. The drawing widget updates. `draw` uses no wake; you may need the app open or the 5-second poll.
+Expected: the tool prints `RECEIVED` for your send and writes a PNG under `/tmp/partner-in/`. A shared send's JSON has `"layer":"shared"` and `"page"`. The emulator Activity tab shows that picture on the shared page. The drawing widget updates. `draw` from the tool has no `layer` field; it still lands as the partner's layer on the current page. `draw` uses no wake; you may need the app open or the 5-second poll.
+
+- [ ] Pass
+
+## Shared canvas
+
+### Phones
+
+1. On both phones, open Draw. Leave the header on Shared. Each person draws a stroke and sends.
+2. With the studio open on one phone, have the other send again.
+3. More, New page. On both phones, open Profile, Saved drawings.
+4. Switch one phone to Separate, draw, and send. Switch back to Shared.
+
+Expected: both strokes show on the one page. Your eraser does not remove their strokes. Clear asks first and removes only yours. While the studio is open, a short line says they drew just now, with no extra polling. New page clears the page on both phones and files the old combined picture under Saved drawings. Separate keeps a private page; the shared strokes are still there when you switch back. The header choice is still selected after you leave the studio.
+
+- [ ] Pass
+
+### Emulator
+
+1. Draw and send on the emulator while Shared is selected.
+2. Desktop: `draw <file.png>`.
+3. More, New page.
+
+Expected: the tool prints `RECEIVED` with `"layer":"shared"` and `"page"`. The desktop PNG shows on the shared page under your stroke. New page prints `RECEIVED` with `"op":"newpage"` and no file id, and does not print a download error. The old page is in Saved drawings.
 
 - [ ] Pass
 
@@ -518,11 +541,12 @@ Same steps on the emulator. Send again should make the tool save another PNG.
 
 ### Phones
 
-1. Profile, Notifications. Turn message notices off. Background the phone. Have the partner send a chat.
-2. Turn them on. Repeat. Then turn drawing notices off and receive a drawing in the background.
-3. Tap "System notification settings".
+1. Profile, Notifications. Leave message wording on Off (the default). Background the phone. Have the partner send a chat.
+2. Switch wording to On. Repeat. Then turn drawing notices off and receive a drawing in the background.
+3. Switch wording to Custom, save a short line, and receive another chat in the background.
+4. Tap "System notification settings".
 
-Expected: off means no notice for that type. On, background, the title is only "New message" or "New drawing". The system screen is this app's notification settings (or the app info page if the first screen is missing). The switches stay after you leave Profile.
+Expected: Off still posts a notice. The title is "Betweenly" and the text is "New message". On uses the partner's name and the message text (or "New drawing" for a drawing). Custom uses only the saved line. Drawing notices off means no drawing notice. The lock screen version stays "Betweenly" / "Notification". The system screen is this app's notification settings (or the app info page if the first screen is missing). Wording and the drawing switch stay after you leave Profile.
 
 - [ ] Pass
 
@@ -538,7 +562,7 @@ Expected: notices follow the switches. Foreground activity does not post one.
 
 Do this only when you mean to publish. Bump `versionCode` above the installed build first.
 
-1. Run `scripts/release.sh` with a notes file. It prints each step and writes `dist/Loviedowpie-v<version>.apk` and `dist/latest.json`.
+1. Run `scripts/release.sh` with a notes file. It prints each step and writes `dist/Betweenly-v<version>.apk` and `dist/latest.json`.
 2. On a phone still on the older version, Profile, Check for updates. Install.
 
 Expected: the banner shows the new version and the notes. The installer opens. The sha256 of the downloaded file matches `latest.json`. Canceling the installer leaves the old app usable. With no newer version, the check says you are up to date and does not crash offline.
@@ -551,12 +575,12 @@ The desktop tool is not part of this check. Repeat the check once on the emulato
 
 ### Phones
 
-1. Open Activity. Confirm two cards: Draw together, and Hear music together. There is no camera card.
+1. Open Activity. Confirm two cards: Draw together, and Music. There is no camera card. The music screen opened from that card is titled Hear together.
 2. Before any drawing arrives, look at the Draw together picture. It is a small white sheet with one stroke.
 3. After the partner sends a drawing, come back to Activity.
 4. Tap Open on each card, then come back.
 
-Expected: the first card shows the partner's drawing in place of the placeholder. The music card does not play anything until its screen is open. Tapping a card opens that screen and does not change the other card.
+Expected: the first card shows the shared page (your strokes and your partner's on the paper) in place of the placeholder. The music card does not play anything until its screen is open. Tapping a card opens that screen and does not change the other card.
 
 - [ ] Pass
 
@@ -651,12 +675,13 @@ Expected: the photo opens. The jump control appears. The tool has no viewer of i
 
 ### Phones
 
-1. Activity, then the Hear music together card. Deny music permission once, then allow it. The screen title is Hear together.
+1. Activity, then the Music card (subtitle "Your songs" when nothing is loaded). Deny music permission once, then allow it. The screen title is Hear together.
 2. Play a song that is already on the phone. Pause, seek, skip, shuffle, and repeat.
 3. Invite the partner. On the other phone, open Hear together and accept. Pause on one phone. Leave on the other.
 4. Try a song larger than 20 MB if you have one.
+5. With Keep playing in background left off, leave the screen. Then turn that switch on, play a song, and leave the screen again.
 
-Expected: playback stays on this screen. Leaving the screen stops the audio. There is no ongoing playback notice. The partner can join only while their music screen is open. An invite while that screen is closed shows "Listen together?" and opens Activity, not the player. A song over 20 MB does not upload. Airplane mode shows a failure and does not crash. Denying permission leaves the library empty.
+Expected: with Keep playing off, leaving the screen stops the audio and there is no ongoing playback notice. With it on, a notice says "Music" and "Playing" or "Paused", with no song title, and playback can continue. The partner can join only while their music screen is open. An invite while that screen is closed shows "Listen together?" and opens Activity, not the player. A song over 20 MB does not upload. Airplane mode shows a failure and does not crash. Denying permission leaves the library empty.
 
 - [ ] Pass
 

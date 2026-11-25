@@ -1,8 +1,8 @@
 [package]
-name = "loviedowpie-core"
+name = "betweenly-core"
 version = "0.1.0"
 edition = "2021"
-description = "Loviedowpie crypto + pairing core. No network code lives here."
+description = "Betweenly crypto + pairing core. No network code lives here."
 license = "MIT"
 
 [lib]

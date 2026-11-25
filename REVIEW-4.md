@@ -5,7 +5,7 @@ Read against the code on branch `v2`. Gradle was not run. The lead builds.
 ## Verified
 
 1. Dock is four tabs (Activity, Chat, Location, Profile). No camera tab. Camera is the chat plus menu (`Lu.Camera` → `Screen.Camera`).
-2. `LoviedowpieTheme` wraps every screen in `AppBackground`: sky, blobs, doodle tile at 0.07 light / 0.08 dark. Chat wallpaper is an extra layer on top.
+2. `BetweenlyTheme` wraps every screen in `AppBackground`: sky, blobs, doodle tile at 0.07 light / 0.08 dark. Chat wallpaper is an extra layer on top.
 3. No `Icons.*` in `android/`. Icons are `LuIcon`. Motion specs go through `Motion.tween` / `Motion.spring`, which return `snap()` when `animations_enabled` is false. Profile “Reduce animations” writes that flag (`checked = !animationsOn`).
 4. Activity is two hub cards. Drawing Studio is the Draw card. Paper is clipped to `LdRadius.card`. Sub-dock is Brush, Color, Size, Opacity, Eraser, Save, Send. Color sheet has swatches and a nested wheel. Brush kinds and the eraser (`PorterDuff.Mode.CLEAR` on the ink layer) are implemented. Undo, redo, save, and send are wired.
 5. Long-press opens a reaction pill (7 slots + edit) and a separate action card (reply, copy, delete for me, unsend on your own messages). Both tombstones use `chat_deleted_them` (“This message was deleted”). Jump-to-latest, image pager with a thumbnail strip, wallpaper from the overflow menu (`wall` message), and the plus menu are present.

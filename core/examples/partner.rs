@@ -24,7 +24,7 @@
 //! `curl` must be on PATH. Needs the `base64` dev-dependency only.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use loviedowpie_core::{file_decrypt, file_encrypt, rendezvous_id, Pairing, Session};
+use betweenly_core::{file_decrypt, file_encrypt, rendezvous_id, Pairing, Session};
 use std::fs::File;
 use std::io::{self, BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -563,7 +563,7 @@ fn request(method: &str, url: &str, body: Option<&[u8]>) -> Result<(u16, Vec<u8>
         .arg("-X")
         .arg(method)
         .arg("-A")
-        .arg("LoviedowpiePartner")
+        .arg("BetweenlyPartner")
         .stdin(Stdio::null());
     let _input = if let Some(bytes) = body {
         let input = TempFile::new("in")?;

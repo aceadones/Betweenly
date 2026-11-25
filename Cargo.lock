@@ -19,6 +19,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "betweenly-core"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chacha20poly1305",
+ "getrandom",
+ "hkdf",
+ "jni",
+ "sha2",
+ "spake2",
+ "zeroize",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -256,20 +270,6 @@ name = "log"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
-
-[[package]]
-name = "loviedowpie-core"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chacha20poly1305",
- "getrandom",
- "hkdf",
- "jni",
- "sha2",
- "spake2",
- "zeroize",
-]
 
 [[package]]
 name = "memchr"
