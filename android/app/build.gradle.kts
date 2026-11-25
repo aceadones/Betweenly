@@ -20,8 +20,8 @@ android {
         applicationId = "app.loviedowpie"
         minSdk = 28
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.1.0-beta"
+        versionCode = 4
+        versionName = "2.2.0-beta"
         ndk { abiFilters += listOf("arm64-v8a") }
         // DATA-FLOW: the only server the app talks to for messages/updates (besides map tiles + FCM).
         buildConfigField("String", "RELAY_URL", "\"${prop("relay.url", "https://loviedowpie-relay.example.workers.dev")}\"")
