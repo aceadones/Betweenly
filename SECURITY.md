@@ -28,12 +28,12 @@ A curious relay operator, a person who learns the relay URL, and a passive netwo
 - The mailbox keeps at most 20 blobs and deletes the rest 24 hours after the last write, or immediately when the owner reads. A burst can drop an unread message.
 - The safety number catches a substituted handshake only if both people compare it. The app unpairs if they say the numbers differ. Skipping the comparison trusts the relay to have forwarded the real SPAKE2 messages.
 - The code has about 40 bits. SPAKE2 is built so a recorded handshake does not let someone test code guesses offline, and learning the code later still does not reveal the session key from the transcript alone. A guess has to be a live join. The relay allows three joins, then burns the rendezvous. A live attacker who guesses the code before it expires can pair as the partner.
-- Routine location, drawings, wallpaper, playlist edits, unsends, and music commands other than invite do not wake the other phone. They wait in the mailbox.
+- Routine location, drawings, wallpaper, playlist JSON, unsends, and music JSON other than an invite do not wake the other phone. They wait in the mailbox.
 - Turning location sharing off does not delete the last point from the partner’s phone.
 - Notification mode Off still posts a local notice. The words are generic. The lock screen uses a second, generic public version.
 - Link previews reveal the sender’s IP to the website. Map tiles reveal the viewed squares and the IP to the OpenStreetMap tile server. Update metadata and the APK are public.
 - Play services may use the network as part of Android’s location provider. This app does not POST coordinates to Google.
-- Unpair deletes the session, chat, attachments, wallpaper, drawings, and partner location. It does not delete the music database, offline songs, gallery copies, or map tiles. A file key inside a music row can remain on the phone.
+- Unpair deletes the session, chat, attachments, wallpaper, drawings, and partner location. It does not delete gallery copies, map tiles, or the Duet now-playing line in SharedPreferences `duet`. Betweenly no longer keeps a music database. The next process start deletes a leftover `betweenly-music.db`, `filesDir/music`, and `cacheDir/music` from an older build. Duet never receives a key, the session, or a relay URL. A debug build accepts the Duet package name without a matching signature. A release build requires the same certificate.
 - A stolen unlocked phone exposes what the app can decrypt. That is outside this design.
 - A compromised build, or a person who can change `relay.url` before you install, can point the phone at a different server. The safety number is the check that the partner you paired is the partner you think you paired.
 - The desktop example `core/examples/partner.rs` prints decrypted JSON to the terminal. It is a test tool. Do not run it on a machine you do not trust with the conversation.

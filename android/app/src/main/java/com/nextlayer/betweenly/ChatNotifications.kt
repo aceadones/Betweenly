@@ -14,9 +14,10 @@ import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 /**
- * Local notices for chat, drawings, pings, and music invites.
+ * Local notices for chat, drawings, pings, and listen-together invites.
  * The words come from [notificationText]. Tapping a message opens Chat.
- * A drawing or a music invite opens Activity. A ping opens Location.
+ * A drawing opens Activity. A listen-together invite opens Duet, or the
+ * Duet releases page when Duet is not installed. A ping opens Location.
  *
  * DATA-FLOW: nothing leaves the phone. These are local notifications.
  * On mode may put the decrypted message, already stored on this phone, into the shade.
@@ -108,15 +109,19 @@ object ChatNotifications {
     }
 
     /**
-     * Music invite. Same wording rules as a message. No song title.
-     * DATA-FLOW: nothing leaves the phone.
+     * Listen-together invite. Same wording rules as a message. No song title.
+     * The notice and its button open Duet, or the releases page when Duet is absent.
+     * DATA-FLOW: nothing leaves this process. The button is an activity intent.
      */
     fun onMusicInvite(context: Context) {
+        val app = context.applicationContext
         val copy = notificationText(
             context,
             event = NotifEvent.MusicInvite,
             sender = Store.partnerName(context),
         )
+        val installed = DuetBridge.installed(app)
+        val label = app.getString(if (installed) R.string.duet_open else R.string.duet_install)
         post(
             context = context,
             channelId = CHANNEL,
@@ -124,10 +129,16 @@ object ChatNotifications {
             channelDesc = R.string.notif_channel_messages_desc,
             notificationId = MUSIC_NOTIFICATION_ID,
             copy = copy,
-            open = "activity",
+            open = null,
             requestCode = 32,
             alertEveryTime = false,
+            target = DuetBridge.viewIntent(app),
+            actionLabel = label,
         )
+    }
+
+    fun cancelMusic(context: Context) {
+        cancelId(context, MUSIC_NOTIFICATION_ID)
     }
 
     fun cancel(context: Context) {
@@ -154,15 +165,18 @@ object ChatNotifications {
         open: String?,
         requestCode: Int,
         alertEveryTime: Boolean,
+        target: Intent? = null,
+        actionLabel: String? = null,
     ) {
         val app = context.applicationContext
         try {
             val manager = app.getSystemService(NotificationManager::class.java) ?: return
             if (!canPost(app, manager)) return
             ensureChannel(manager, app, channelId, channelName, channelDesc)
-            val intent = Intent(app, MainActivity::class.java)
+            val intent = target ?: Intent(app, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            if (open != null) intent.putExtra(MainActivity.EXTRA_OPEN, open)
+            if (target == null && open != null) intent.putExtra(MainActivity.EXTRA_OPEN, open)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val pending = PendingIntent.getActivity(
                 app,
                 requestCode,
@@ -183,6 +197,9 @@ object ChatNotifications {
             if (copy.text.isNotEmpty()) {
                 builder.setContentText(copy.text)
                 builder.setStyle(NotificationCompat.BigTextStyle().bigText(copy.text))
+            }
+            if (!actionLabel.isNullOrBlank()) {
+                builder.addAction(R.drawable.ic_stat_heart, actionLabel, pending)
             }
             manager.notify(notificationId, builder.build())
         } catch (_: Exception) {

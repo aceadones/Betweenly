@@ -49,7 +49,6 @@ import com.nextlayer.betweenly.ui.LdBottomBar
 import com.nextlayer.betweenly.ui.LdTab
 import com.nextlayer.betweenly.ui.BetweenlyTheme
 import com.nextlayer.betweenly.ui.Motion
-import com.nextlayer.betweenly.ui.MusicScreen
 import com.nextlayer.betweenly.ui.OnboardingScreen
 import com.nextlayer.betweenly.ui.PairScreen
 import com.nextlayer.betweenly.ui.PrivacyScreen
@@ -65,7 +64,7 @@ import kotlinx.coroutines.launch
 /**
  * The only activity. Onboarding and pairing fill the window. After pairing,
  * a bottom dock switches Activity, Chat, Location, and Profile. The map,
- * camera, drawing studio, and music screen sit above that dock.
+ * camera, and drawing studio sit above that dock. Duet is a separate app.
  *
  * Widget and notification extras: `open=track`, `open=chat`, `open=activity`.
  * The V1 widget still sends `open=settings`; that opens Profile.
@@ -142,7 +141,6 @@ private enum class Screen {
     Track,
     Camera,
     Drawing,
-    Music,
 }
 
 private enum class Tab { Activity, Chat, Location, Profile }
@@ -195,7 +193,7 @@ private fun Root(startOpen: String?) {
     )
 
     val leave = screen == Screen.Privacy || screen == Screen.Camera || screen == Screen.Track ||
-        screen == Screen.Drawing || screen == Screen.Music
+        screen == Screen.Drawing
     BackHandler(enabled = leave) {
         screenName = if (screen == Screen.Privacy) privacyFrom else Screen.Main.name
     }
@@ -223,14 +221,12 @@ private fun Root(startOpen: String?) {
             Screen.Track -> TrackScreen(onBack = { screenName = Screen.Main.name })
             Screen.Camera -> CameraRoute(onClose = { screenName = Screen.Main.name })
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
-            Screen.Music -> MusicScreen(onClose = { screenName = Screen.Main.name })
             Screen.Main -> MainShell(
                 tab = tab,
                 onTab = { tabName = it.name },
                 onTrack = { screenName = Screen.Track.name },
                 onCamera = { screenName = Screen.Camera.name },
                 onOpenDrawing = { screenName = Screen.Drawing.name },
-                onOpenMusic = { screenName = Screen.Music.name },
                 onPrivacy = {
                     privacyFrom = Screen.Main.name
                     screenName = Screen.Privacy.name
@@ -248,7 +244,6 @@ private fun MainShell(
     onTrack: () -> Unit,
     onCamera: () -> Unit,
     onOpenDrawing: () -> Unit,
-    onOpenMusic: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
 ) {
@@ -305,7 +300,6 @@ private fun MainShell(
                 when (current) {
                     Tab.Activity -> ActivityScreen(
                         onOpenDrawing = onOpenDrawing,
-                        onOpenMusic = onOpenMusic,
                     )
                     Tab.Chat -> ChatScreen(onOpenCamera = onCamera)
                     Tab.Location -> HomeScreen(onTrack = onTrack)
@@ -430,7 +424,7 @@ private fun screenForward(from: Screen, to: Screen): Boolean {
         Screen.Onboarding -> 0
         Screen.Pair -> 1
         Screen.Main -> 2
-        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.Music -> 3
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing -> 3
     }
     return depth(to) >= depth(from)
 }

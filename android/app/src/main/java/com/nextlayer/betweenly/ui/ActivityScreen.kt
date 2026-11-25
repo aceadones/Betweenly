@@ -28,6 +28,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,10 +52,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.nextlayer.betweenly.DrawStore
+import com.nextlayer.betweenly.DuetBridge
+import com.nextlayer.betweenly.DuetState
 import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.Store
-import com.nextlayer.betweenly.music.MusicBridge
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.ui.icons.LuIcon
 import kotlinx.coroutines.Dispatchers
@@ -62,20 +67,33 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
- * Activity is a hub. The cards open Drawing and Music. They do not draw by themselves.
+ * Activity is a hub. Drawing opens in this app. Duet opens the other app, or
+ * its install page. The card reads Duet when this screen resumes, and when
+ * Duet pushes a new line. It does not poll.
  *
- * DATA-FLOW: none. A tap only changes the screen.
+ * DATA-FLOW: none. A Duet tap is a local intent. Install hands a URL to the browser.
  */
 @Composable
-fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenMusic: () -> Unit) {
+fun ActivityScreen(onOpenDrawing: () -> Unit) {
     val context = LocalContext.current
     val view = LocalView.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumeTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
     val storeRev by Store.changes.collectAsState()
+    val duetRev by DuetState.changes.collectAsState()
+    val duetNow = remember(resumeTick, duetRev) { DuetState.fresh(context) }
+    val duetInstalled = remember(resumeTick) { DuetBridge.installed(context) }
     val drawRev by DrawStore.changes.collectAsState()
     val partnerFile = remember(drawRev, storeRev) { DrawStore.latestFromPartner(context) }
     val showPreview = remember(drawRev, storeRev) { DrawStore.hasPreview(context) }
     val name = remember(storeRev) { Store.partnerName(context).trim() }
-    val glance = MusicBridge.glance
     val slot = remember { arrayOfNulls<Bitmap>(1) }
     var thumb by remember { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(drawRev, storeRev) {
@@ -135,19 +153,19 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenMusic: () -> Unit) {
                         subtitle = drawSubtitle,
                         index = index,
                         onClick = onOpenDrawing,
+                        chipText = stringResource(R.string.activity_open),
                     ) {
                         DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
                     }
-                    HubCard.Music -> HubTile(
-                        title = glance?.title?.takeIf { it.isNotBlank() }
-                            ?: stringResource(R.string.music_screen),
-                        subtitle = glance?.artist?.takeIf { it.isNotBlank() }
-                            ?: stringResource(R.string.music_card_idle),
+                    HubCard.Duet -> HubTile(
+                        title = stringResource(R.string.duet_title),
+                        subtitle = duetSubtitle(duetInstalled, duetNow),
                         index = index,
-                        onClick = onOpenMusic,
-                        chip = Color(0xFFD6245A),
+                        onClick = { DuetBridge.open(context) },
+                        chip = LdColors.primary,
+                        chipText = duetChip(duetInstalled, duetNow),
                     ) {
-                        MusicMedia(playing = glance?.playing == true)
+                        DuetMedia(playing = duetInstalled && duetNow?.playing == true)
                     }
                 }
             }
@@ -155,7 +173,34 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenMusic: () -> Unit) {
     }
 }
 
-private enum class HubCard { Draw, Music }
+private enum class HubCard { Draw, Duet }
+
+@Composable
+private fun duetSubtitle(installed: Boolean, now: DuetState.Now?): String {
+    if (!installed) return stringResource(R.string.duet_install_body)
+    val current = now ?: return stringResource(R.string.duet_open)
+    val title = current.title
+    if (title.isBlank()) return stringResource(R.string.duet_open)
+    val artist = current.artist
+    return if (artist.isBlank()) {
+        stringResource(R.string.duet_playing_title, title)
+    } else {
+        stringResource(R.string.duet_playing_line, title, artist)
+    }
+}
+
+@Composable
+private fun duetChip(installed: Boolean, now: DuetState.Now?): String {
+    if (!installed) return stringResource(R.string.duet_install)
+    if (now == null || (now.title.isBlank() && !now.playing)) {
+        return stringResource(R.string.activity_open)
+    }
+    return if (now.playing) {
+        stringResource(R.string.duet_chip_playing)
+    } else {
+        stringResource(R.string.duet_chip_paused)
+    }
+}
 
 @Composable
 private fun HubTile(
@@ -164,6 +209,7 @@ private fun HubTile(
     index: Int,
     onClick: () -> Unit,
     chip: Color = LdColors.bubbleMine,
+    chipText: String,
     media: @Composable () -> Unit,
 ) {
     val interaction = remember(title) { MutableInteractionSource() }
@@ -217,7 +263,7 @@ private fun HubTile(
                 )
             }
             Text(
-                stringResource(R.string.activity_open),
+                chipText,
                 modifier = Modifier
                     .clip(RoundedCornerShape(LdRadius.chip))
                     .background(chip)
@@ -291,21 +337,21 @@ private fun EmptyDrawingArt() {
 }
 
 @Composable
-private fun MusicMedia(playing: Boolean) {
+private fun DuetMedia(playing: Boolean) {
     Box(
         Modifier
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
-                    listOf(Color(0xFF1A0A12), Color(0xFF3A1224), Color(0xFFD6245A)),
+                    listOf(LdColors.navy, Color(0xFF3A1224), LdColors.primary),
                 ),
             ),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Color(0xFFFF5C86).copy(alpha = 0.28f), radius = size.minDimension * 0.42f)
+            drawCircle(LdColors.glow.copy(alpha = 0.28f), radius = size.minDimension * 0.42f)
         }
-        LuIcon(Lu.Music, contentDescription = null, tint = Color.White, size = 48.dp)
+        LuIcon(Lu.Headphones, contentDescription = null, tint = Color.White, size = 48.dp)
         if (playing) {
             Box(
                 Modifier
@@ -313,7 +359,7 @@ private fun MusicMedia(playing: Boolean) {
                     .padding(16.dp)
                     .size(10.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFFF5C86)),
+                    .background(LdColors.glow),
             )
         }
     }

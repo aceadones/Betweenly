@@ -575,12 +575,12 @@ The desktop tool is not part of this check. Repeat the check once on the emulato
 
 ### Phones
 
-1. Open Activity. Confirm two cards: Draw together, and Music. There is no camera card. The music screen opened from that card is titled Hear together.
+1. Open Activity. Confirm two cards: Draw together, and Duet. There is no camera card and no in-app music screen.
 2. Before any drawing arrives, look at the Draw together picture. It is a small white sheet with one stroke.
 3. After the partner sends a drawing, come back to Activity.
-4. Tap Open on each card, then come back.
+4. Tap Open on Draw together, then come back. Tap the Duet card.
 
-Expected: the first card shows the shared page (your strokes and your partner's on the paper) in place of the placeholder. The music card does not play anything until its screen is open. Tapping a card opens that screen and does not change the other card.
+Expected: the first card shows the shared page (your strokes and your partner's on the paper) in place of the placeholder. With Duet not installed, the Duet subtitle is "Music, together. Install the Duet app" and the chip says "Install Duet". That tap opens the browser on `https://github.com/aceadones/Duet/releases`. With Duet installed and nothing fresh, the subtitle is "Open Duet" and the tap opens Duet. The card does not play audio and does not ask for a music permission. Leaving Activity and coming back refreshes the card. It does not poll while you stay on the tab, except that a new line from Duet updates the subtitle.
 
 - [ ] Pass
 
@@ -671,23 +671,25 @@ Expected: the photo opens. The jump control appears. The tool has no viewer of i
 
 - [ ] Pass
 
-## Hear together
+## Duet bridge
+
+Betweenly does not play audio. Playback is the Duet app. These checks are the bridge.
 
 ### Phones
 
-1. Activity, then the Music card (subtitle "Your songs" when nothing is loaded). Deny music permission once, then allow it. The screen title is Hear together.
-2. Play a song that is already on the phone. Pause, seek, skip, shuffle, and repeat.
-3. Invite the partner. On the other phone, open Hear together and accept. Pause on one phone. Leave on the other.
-4. Try a song larger than 20 MB if you have one.
-5. With Keep playing in background left off, leave the screen. Then turn that switch on, play a song, and leave the screen again.
+1. With Duet not installed, open Activity. Tap the Duet card.
+2. Install Duet (same release key). Open Activity again. Tap the card.
+3. In Duet, start a song, then return to Betweenly’s Activity tab.
+4. Have the partner send a `music` invite while Duet is not connected to Betweenly. Repeat with notification mode Off and mode On.
+5. Connect Duet, then have the partner send a `music` or `plist` message.
 
-Expected: with Keep playing off, leaving the screen stops the audio and there is no ongoing playback notice. With it on, a notice says "Music" and "Playing" or "Paused", with no song title, and playback can continue. The partner can join only while their music screen is open. An invite while that screen is closed shows "Listen together?" and opens Activity, not the player. A song over 20 MB does not upload. Airplane mode shows a failure and does not crash. Denying permission leaves the library empty.
+Expected: step 1 opens the browser on the Duet releases page. Step 2 opens Duet. Step 3 shows "Playing: Title - Artist" (or the title alone) and a read-only Playing or Paused chip. After 60 seconds with no new line, the subtitle is "Open Duet" the next time the tab resumes. Step 4 posts a notice. Off mode is content-free. On mode says "Listen together?" and does not name the song. The button says "Install Duet" or "Open Duet" and does that. Step 5 delivers the JSON to Duet and does not post the notice. Betweenly never asks for audio permission and never plays the song. A payload that is not `music` or `plist`, or that is over 60,000 bytes, is not sealed.
 
 - [ ] Pass
 
 ### Emulator
 
-Local playback can be checked on the emulator if it has an audio file and you allow the permission. The desktop tool cannot invite, accept, play, or seek. It will print `RECEIVED` with `"t":"music"` if the emulator invites, and it will not start audio. Mark the two-phone session phone-only when the desktop is the partner.
+A debug build accepts package `com.nextlayer.duet` without a matching signature, so a debug Duet can bind. A release build requires `checkSignatures` to match. The desktop tool does not send `music` or `plist` and does not play audio. If one arrives, it prints `RECEIVED` and does not start audio. The phone forwards that JSON to Duet, or posts the invite notice when Duet is not registered.
 
 - [ ] Pass
 

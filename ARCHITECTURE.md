@@ -38,11 +38,11 @@ android/              Kotlin + Jetpack Compose.
   LocationSharing.kt  Alarm, boot receiver, one-shot fix. LiveLocationService.kt
   RingController.kt   RingService.kt
   FcmService.kt       Empty wake and token registration.
-  FileTransfer.kt     Shared upload/download for chat, draw, wall, music.
+  FileTransfer.kt     Shared upload/download for chat, draw, and wall.
+  MusicBridgeService.kt  Exported binder for Duet. DuetBridge.kt, DuetState.kt.
   ChatStore.kt ChatInbound.kt ui/ChatController.kt
   LinkPreview.kt ChatWallpaperSync.kt
   DrawStore.kt DrawInbound.kt
-  music/              Player, database, wire format, background notice.
   Updater.kt
   ui/                 Compose screens, widgets, Motion, Radius, Theme, icons.
 scripts/release.sh    APK, relay KV, GitHub release.
@@ -96,14 +96,14 @@ sequenceDiagram
     I->>R: GET /box/{inbox}
     R-->>I: blobs, queue cleared
     I->>C: open, reject replay
-    I->>I: apply loc, chat, draw, music, ...
+    I->>I: apply loc, chat, draw; hand music and plist to Duet
 ```
 
 `SessionGate` serializes every seal and open. Two overlapping seals would reuse a counter.
 
-While `MainActivity` is resumed, and the screen is not onboarding, pairing, or the privacy page, `InboxPump` pulls every 5 seconds. Listen together sets `AppState.fastPoll` and the interval becomes 2 seconds. The pump stops on pause. `App.onCreate` pulls once if already paired. `FcmService` pulls when the data map contains `w`, with an 18 second cap.
+While `MainActivity` is resumed, and the screen is not onboarding, pairing, or the privacy page, `InboxPump` pulls every 5 seconds. Duet’s `SESSION` message sets `AppState.fastPoll` and the interval becomes 2 seconds. The pump stops on pause. `App.onCreate` pulls once if already paired, and deletes a leftover music database and song copies from older builds. `FcmService` pulls when the data map contains `w`, with an 18 second cap.
 
-Wake is on for profile, share, ring, ring-stop, ping, chat, attachments, link cards, reactions, the last live-location point, and a music invite. Wake is off for routine `loc` and `bat`, `ringack`, unsend, wallpaper, every `draw`, playlist edits, and music commands other than invite.
+Wake is on for profile, share, ring, ring-stop, ping, chat, attachments, link cards, reactions, the last live-location point, and a music invite (`t` = `music`, `op` = `invite`). Wake is off for routine `loc` and `bat`, `ringack`, unsend, wallpaper, every `draw`, every `plist`, and every other `music` op.
 
 ## Ring and ping
 
@@ -136,7 +136,7 @@ The notice text is chosen on the receiver (`NotificationTexts`). The lock-screen
 
 ## File transfer
 
-Used by chat attachments, drawing layers, wallpaper photos, and shared songs.
+Used by chat attachments, drawing layers, and wallpaper photos. Listen-together does not upload a file from Betweenly.
 
 ```mermaid
 sequenceDiagram
@@ -152,7 +152,7 @@ sequenceDiagram
     P->>P: file_decrypt, write app-private storage
 ```
 
-`FileTransfer.download` retries at 0, 3, 8, 15, and 30 seconds. Chat photos are JPEG, long edge 2048, before encryption. Videos, GIFs, stickers, and documents are capped at 20 MB of plaintext. Shared audio uses the same 20 MB cap. Wallpaper JPEGs are capped at 3 MB. Drawing PNGs use the 24 MB ciphertext cap.
+`FileTransfer.download` retries at 0, 3, 8, 15, and 30 seconds. Chat photos are JPEG, long edge 2048, before encryption. Videos, GIFs, stickers, and documents are capped at 20 MB of plaintext. Wallpaper JPEGs are capped at 3 MB. Drawing PNGs use the 24 MB ciphertext cap.
 
 ## Shared drawing
 
@@ -182,34 +182,57 @@ sequenceDiagram
 
 A `draw` with no `layer` field is a full PNG and is stored as the partner’s layer on the current page. The combined picture is not uploaded. `wake` is off, so there is no FCM ping for a drawing. The widget is RemoteViews, 30-minute `updatePeriodMillis`, and also updates when a PNG is saved. It reads local files only.
 
-## Music sync
+## Duet bridge
 
-`MusicSession` is created when the music screen opens, not from `Application.onCreate`. Solo playback does not call `Outbox`.
+Duet (`com.nextlayer.duet`) plays the music. Betweenly only carries `music` and `plist` JSON. The service is exported, with action `com.nextlayer.betweenly.action.MUSIC_BRIDGE`. There is no custom permission. Every bind and every message requires the caller package `com.nextlayer.duet` and `checkSignatures(callingUid, myUid) == SIGNATURE_MATCH`. A debug build accepts the package name without the signature match.
+
+Nothing in a bridge bundle is a key, a session, or a relay URL. `positionMs`, `durationMs`, and Duet’s own `ts` on a now-playing message are accepted and not stored. The card’s freshness clock is the time Betweenly received the line. It goes idle after 60 seconds. That check happens when the Activity tab resumes or when a new line arrives. There is no timer.
 
 ```mermaid
 sequenceDiagram
-    participant A as Inviter
+    participant D as Duet
+    participant B as Betweenly
     participant R as Relay
-    participant B as Partner
-    A->>R: music invite, wake=1
-    R->>B: empty FCM ping
-    B->>B: notice "Listen together?", hold 10 min
-    B->>R: music accept, echo = invite ts, wake off
-    A->>A: clock offset from the round trip
-    loop While the session is active and a phone is playing
-        A->>R: play, pause, seek, track, queue, or sync (~10 s)
-        Note over A,B: receiver aims at pos + elapsed, seek if off by more than 400 ms
+    participant P as Partner Betweenly
+    participant E as Partner Duet
+    D->>B: bind MUSIC_BRIDGE, REGISTER replyTo
+    B->>D: STATUS paired, partnerName, partnerOnline=unknown
+    D->>B: SEND json (music or plist, at most 60000 bytes)
+    B->>B: seal. Wake only if t=music and op=invite
+    B->>R: ciphertext
+    R->>P: empty FCM ping, invite only
+    P->>P: open
+    alt Duet is registered
+        P->>E: INBOUND json
+    else music invite and no Duet
+        P->>P: local notice, button opens Duet or the releases page
+    else anything else
+        P->>P: drop
     end
-    A->>R: music leave, wake off
+    D->>B: SESSION active
+    Note over B: fastPoll while the activity is resumed
+    D->>B: NOW_PLAYING title, artist, playing
 ```
 
-A local file of 20 MB or less is uploaded once through the file path above. The partner writes `cacheDir/music` and deletes it when the session releases. Songs over 20 MB play only on the phone that has them. Online tracks are not uploaded; nothing in this build registers an online source.
+| `what` | Name | Direction | Bundle |
+|---|---|---|---|
+| 1 | `REGISTER` | Duet to Betweenly | `Message.replyTo`, or parcelable `replyTo` |
+| 2 | `UNREGISTER` | Duet to Betweenly | none |
+| 3 | `SEND` | Duet to Betweenly | `json` string |
+| 4 | `NOW_PLAYING` | Duet to Betweenly | `title`, `artist`, `playing`, `positionMs`, `durationMs`, `ts` |
+| 5 | `SESSION` | Duet to Betweenly | `active` boolean |
+| 6 | `PING` | Duet to Betweenly | none |
+| 7 | `INBOUND` | Betweenly to Duet | `json` string |
+| 8 | `STATUS` | Betweenly to Duet | `paired` boolean, `partnerName` string, `partnerOnline` string always `unknown` |
+| 9 | `ACK` | Betweenly to Duet | `ok` boolean, `req` int (the request `what`) |
 
-Shared playlists are a separate `plist` message (`create`, `rename`, `add`, `remove`, `delete`, `snapshot`), `wake` off. Last writer wins per track id by `ts`. Turning sharing off stops sends and leaves the partner’s copy. The queue on the wire is capped at 20. The solo queue holds up to 100.
+`ACK` and `STATUS` go to the messenger from `REGISTER`. Duet should register before it expects them. `STATUS` is sent on register and again when the paired flag or the partner name changes. It is not sent for a location tick. `partnerOnline` is always the string `unknown`: Betweenly does not tell Duet whether the other phone is reachable.
 
-If Keep playing is on, `MusicPlayService` posts a foreground notice (“Music” / “Playing” or “Paused”, no title) and does not own the player. The switch defaults to off. Ten minutes of pause releases the session. The sleep timer is a coroutine delay.
+`SEND` of any other `t`, or of UTF-8 over 60,000 bytes, is rejected. A rejected send gets `ACK` with `ok` false and is not sealed.
 
-Leaving the app while Listen together is still playing does not keep the 2-second poll. Sync waits until the activity is resumed again.
+While `SESSION` says active, and the phone is still paired, `AppState.fastPoll` is true and the open activity pulls every 2 seconds. Unregister, a dead Duet process, or unpair sets it false. The pull still stops when the activity pauses.
+
+An invite that Duet is not there to take is a local notice from `NotificationTexts`. The default wording is content-free. On mode says “Listen together?” and does not include the song. The button opens Duet, or `https://github.com/aceadones/Duet/releases` in the browser. Betweenly does not fetch that URL.
 
 ## Update flow
 
@@ -245,7 +268,7 @@ A quiet check is skipped for 24 hours after a real answer (including “nothing 
 | `ringack` | `RingController` if the id is the outgoing call |
 | `chat`, `att`, `link`, `react`, `unsend`, `wall` | `ChatInbound` |
 | `draw` | `DrawInbound` |
-| `music`, `plist` | `MusicInbound` |
+| `music`, `plist` | `DuetBridge.deliver` |
 
 Unknown types are ignored. A blob that fails to open is skipped, except during the pairing confirm window, where a total failure means the codes did not match.
 
@@ -257,8 +280,8 @@ Unknown types are ignored. A blob that fails to open is skipped, except during t
 | Live location service | Only while live is on. Not started from boot. |
 | FCM wake | A partner message asked for `wake`. |
 | Ring service | Until dismiss, `ringstop`, or two minutes. |
-| Music foreground notice | Only if Keep playing is on and a track is loaded. |
-| Inbox poll | Not while the activity is paused. One pull on process start. |
+| Duet bridge | Only while Duet is bound. It does not wake the phone by itself. |
+| Inbox poll | Not while the activity is paused. One pull on process start. A listen-together session does not poll in the background. |
 
 ## Desktop partner
 

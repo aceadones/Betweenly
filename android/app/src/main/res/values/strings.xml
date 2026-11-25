@@ -562,4 +562,12 @@
     <string name="home_track">Track</string>
     <string name="home_dash">--</string>
     <string name="home_chip_sharing">Sharing</string>
+    <string name="duet_title">Duet</string>
+    <string name="duet_install_body">Music, together. Install the Duet app</string>
+    <string name="duet_install">Install Duet</string>
+    <string name="duet_open">Open Duet</string>
+    <string name="duet_playing_line">Playing: %1$s - %2$s</string>
+    <string name="duet_playing_title">Playing: %1$s</string>
+    <string name="duet_chip_playing">Playing</string>
+    <string name="duet_chip_paused">Paused</string>
 </resources>

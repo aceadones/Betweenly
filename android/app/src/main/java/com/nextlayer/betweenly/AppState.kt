@@ -19,7 +19,7 @@ object AppState {
 
     /**
      * While true, [MainActivity] pulls the inbox every 2 seconds instead of 5.
-     * Music sessions set this. It carries no message contents.
+     * Duet sets this for a listen-together session. It carries no message contents.
      */
     @Volatile
     var fastPoll: Boolean = false

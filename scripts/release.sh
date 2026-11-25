@@ -2,10 +2,10 @@
 # Builds the release APK, publishes it to the relay KV, and cuts a GitHub release.
 # Optional argument: a notes file. Otherwise the notes are "Betweenly <versionName>".
 # This script is for the Mac toolchain in the repo docs. It does not run itself.
-# REPO stays aceadones/Loviedowpie until that GitHub repo is renamed.
+# REPO stays aceadones/Betweenly until that GitHub repo is renamed.
 set -euo pipefail
 
-REPO="aceadones/Loviedowpie"
+REPO="aceadones/Betweenly"
 
 echo "step 1: locate the repo"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -2,7 +2,7 @@
 
 Written so a person or an AI can answer that from this repo. Status: version 0.0.1, package `com.nextlayer.betweenly`. Every network call in the Kotlin, Rust, and Worker code is tagged `DATA-FLOW:`.
 
-The product name is Betweenly. The Cloudflare Worker name in `relay/wrangler.toml` is still `loviedowpie-relay`. The GitHub repository `scripts/release.sh` publishes to is still `aceadones/Loviedowpie`. Phones talk to the relay URL baked in at build time (`relay.url`), not to GitHub.
+The product name is Betweenly. The Cloudflare Worker name in `relay/wrangler.toml` is still `loviedowpie-relay`. The GitHub repository `scripts/release.sh` publishes to is still `aceadones/Betweenly`. Phones talk to the relay URL baked in at build time (`relay.url`), not to GitHub.
 
 ## How a message is wrapped
 
@@ -25,13 +25,14 @@ File bytes use a fresh 32-byte key, XChaCha20-Poly1305, additional data `file`, 
 | FCM token | Yes | Relay KV `tok:{inbox}`, TLS only, 60-day TTL | The relay, and Google |
 | Wake ping | Yes | Google FCM, body `{w:"1"}` | Google sees that a ping happened. The body has no message, name, or place. |
 | Map tiles | Yes, when you open the map | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | The tile host sees the square and your IP. User-Agent `Betweenly/1.0`. Cached 30 MB on the phone. |
-| Update check | Yes | Relay `/update/latest` and `/update/apk` | Public release metadata and the APK. The relay sees your IP. The phone does not call GitHub. |
+| Update check | Yes | Relay `/update/latest` and `/update/apk` | Public release metadata and the APK. The relay sees your IP. The phone’s own HTTP client does not call GitHub. The Duet install button can hand `https://github.com/aceadones/Duet/releases` to the browser. |
 | Chat, reactions, replies, unsends | Yes, sealed | Relay mailbox | The partner. Unsend is an id only, and `wake` is off. |
-| Attachments, drawing PNGs, wallpaper photos, shared songs | Yes, sealed file plus a sealed pointer | Relay `/file/{id}` for 7 days, pointer in the mailbox | The partner, after decrypt. The key is only in the pointer. |
+| Attachments, drawing PNGs, wallpaper photos | Yes, sealed file plus a sealed pointer | Relay `/file/{id}` for 7 days, pointer in the mailbox | The partner, after decrypt. The key is only in the pointer. |
 | Link previews | The sender’s phone fetches the site | The `https` URL in the message, then the card is sealed | The website sees the sender’s IP. The receiver does not contact the site. |
 | Notification wording | No | This phone | Profile chooses the words. They are not sent. |
 | Distance | No | Computed on this phone | Nobody else |
-| Music likes, private playlists, on-phone songs | No | This phone | A shared playlist and a song you play together are the exceptions in the rows below. |
+| Duet’s library, likes, and private playlists | No | Duet, on this phone | Betweenly does not read them. A shared playlist is the `plist` row below, and only as ciphertext. |
+| Duet now-playing line | No | SharedPreferences `duet` on this phone | Title, artist, and playing. Not a key. Idle after 60 seconds without a new line. |
 | Camera capture | No, until Send | `cacheDir/camera` | Send follows the attachment row. |
 
 ## Message types
@@ -57,8 +58,8 @@ Mailbox retention, all sealed types: `GET /box/{id}` deletes the queue. The queu
 | `unsend` | `t`, `id` | Short. No message text. | Off | None. Local attachment files are deleted on each phone that applies it. | Mailbox rules |
 | `wall` | `t`, `kind` (`default`, `color`, `image`), `color` (0–5), `fid`, `key`, `ts` | Short, unless you count the photo file. | Off | JPEG ciphertext when `kind` is `image`, plaintext cap 3 MB. | File: 7 days. Pointer: mailbox rules |
 | `draw` | Layer: `t`, `ts`, `fid`, `key`, `size`, `layer` = `shared`, `page`. Full drawing: same without `layer`. New page: `t`, `op` = `newpage`, `page`, `ts`. | The PNG is the file. New page is short. | Off | PNG ciphertext, 24 MB cap. New page has no file. | File: 7 days. Pointer: mailbox rules |
-| `music` | `t`, `op` (`invite`, `accept`, `leave`, `queue`, `track`, `play`, `pause`, `seek`, `sync`), `ts`, `pos`, optional `echo`, optional `track`, optional `queue` (20). Track: `id` (128), `title` (120), `artist` (80), `dur`, `src` (32), `extra` (file id and key only, or empty). | Kept under about 60 KB before padding, or the send drops extras. | On for `invite` only. Off for the rest. | Optional audio ciphertext, plaintext cap 20 MB, only while a session is sharing a local file. | File: 7 days. Command: mailbox rules |
-| `plist` | `t`, `op` (`create`, `rename`, `add`, `remove`, `delete`, `snapshot`), `id` (32), `name` (80), `tracks` (80, each with its own `ts`), `ts` | A large snapshot can strip `extra` to fit. | Off | Same 20 MB audio upload when a shared playlist adds a local file that has not been uploaded. | File: 7 days. Edit: mailbox rules |
+| `music` | The JSON object Duet supplied. Betweenly requires `t` = `music` and refuses UTF-8 over 60,000 bytes. It does not add fields. | Rejected above 60,000 bytes, before padding. | On only when `op` is `invite`. Off for every other op. | None. Betweenly does not upload audio for this type. | Mailbox rules |
+| `plist` | The JSON object Duet supplied. Betweenly requires `t` = `plist` and the same 60,000 byte cap. | Same cap. | Off | None | Mailbox rules |
 
 These JSON types never leave the phone: chat `gone` (unsend tombstone), chat `note`, and the local keys `rx`, `mx`, `gal`.
 
@@ -84,7 +85,7 @@ A call ring is `ring` plus `rid` and `mode` `call`, with wake. Stop is `ringstop
 
 Ping is `{"t":"ping"}` with wake. The receiver builds the notice locally.
 
-Notification mode defaults to Off: title “Betweenly”, text “New message”. On shows the partner’s name and the decrypted text, or a short label (Photo, Video, Sticker, GIF, File, New drawing, Listen together?). Custom shows only the saved line (48 characters). The alarm disguise replaces the title “Alarm”; the body stays “Tap to dismiss”. The lock screen public version is “Betweenly” / “Notification” and does not include a name or the word ring. None of these strings are sent. They survive unpair.
+Notification mode defaults to Off: title “Betweenly”, text “New message”. On shows the partner’s name and the decrypted text, or a short label (Photo, Video, Sticker, GIF, File, New drawing, Listen together?). A listen-together notice does not include the song title. Custom shows only the saved line (48 characters). The alarm disguise replaces the title “Alarm”; the body stays “Tap to dismiss”. The lock screen public version is “Betweenly” / “Notification” and does not include a name or the word ring. None of these strings are sent. They survive unpair. The invite’s button opens Duet, or the Duet releases page in the browser when Duet is not installed. Betweenly does not request that page itself.
 
 Drawing notices follow that wording and can be switched off. The picture is not attached. Message mode Off still posts a notice. It changes the words. Pings are shown even while the app is in front. Other message notices are skipped while `MainActivity` is in the foreground.
 
@@ -102,15 +103,19 @@ A shared send uploads only that phone’s transparent layer. The composite stays
 
 Wallpaper `kind` `default` or `color` is a small sealed message. `image` also uploads a JPEG of at most 3 MB. The newest `ts` wins.
 
-### Music
+### Duet and listen together
 
-Solo playback does not use the network. Listen together sends `music` only while that mode is on. An invite wakes. Later commands do not. A local song of 20 MB or less can be uploaded for the partner; the decrypted copy in `cacheDir/music` is deleted when the session releases. Larger songs are not uploaded.
+Betweenly does not play songs and does not read the on-phone library. Duet is a separate app. It binds locally to `MusicBridgeService`. That binder is not a network call.
 
-Shared playlist edits are `plist` with `wake` off. Private playlists are not sent. Offline copies are written only when you tap Download for offline, into `filesDir/music/offline`, default cap 500 MB. An `https` download in that store is only reached if a future `MusicSource` returns an `https` URL. Redirects are not followed. The built-in library does not call it. `OnlineSourceStub` is not registered.
+When Duet asks to send, Betweenly seals the JSON and posts it with `Outbox.send`. The relay sees ciphertext. Wake is on only for a `music` object whose `op` is `invite`. Duet cannot ask Betweenly to seal a chat, a location, or any other type: those are rejected, and so is a payload over 60,000 bytes. Betweenly does not attach a file, a key, the session, or the relay URL.
 
-The playback notice, if Keep playing is on, says “Music” and “Playing” or “Paused”. No song title. It stops after 10 minutes of pause. Default is off.
+The partner’s phone opens the blob inside `Inbox` and passes the JSON string to the registered Duet messenger. If no Duet is registered, a `music` invite posts a local notice and every other `music` or `plist` payload is dropped. The notice uses `NotificationTexts`. Default mode is content-free. The button opens Duet, or `https://github.com/aceadones/Duet/releases` in the system browser. Betweenly’s HTTP client does not call GitHub.
 
-`betweenly-music.db` is created the first time Music opens or a sealed playlist message arrives. Unpair does not delete it or the offline folder. A file key for a shared song can remain in a row’s `extra` column.
+`STATUS` back to Duet is `paired`, the partner’s name, and `partnerOnline` set to the string `unknown`. It is sent when Duet registers and when that pair or name changes. It is local IPC.
+
+The Activity card stores the latest title, artist, playing flag, and arrival time in SharedPreferences `duet`. Nothing in that file is uploaded. A line with no update for 60 seconds is shown as idle. The card re-reads on resume and when Duet pushes a line. It does not poll.
+
+On each process start, Betweenly deletes `betweenly-music.db`, `filesDir/music`, and `cacheDir/music` if an older build left them. That delete does not use the network. A file key from the old player does not stay past the next launch.
 
 ### Updates and FCM
 
@@ -124,7 +129,7 @@ No analytics, no ads, no accounts, no Firebase Analytics, no Google Maps SDK, no
 
 ## Data at rest
 
-See the table in [README.md](README.md#data-at-rest). In short: the session and the chat bodies are encrypted with the Keystore. Drawings, the wallpaper JPEG, and offline songs are app-private files. Unpair deletes the session, partner profile, partner location, chat database, attachments, wallpaper, and drawings. It keeps your name, your photo, the FCM token, notification wording, the animation switch, and the last update-check time. It does not delete the music database, offline songs, map tiles, gallery copies, or the onboarding-done flag.
+See the table in [README.md](README.md#data-at-rest). In short: the session and the chat bodies are encrypted with the Keystore. Drawings and the wallpaper JPEG are app-private files. Unpair deletes the session, partner profile, partner location, chat database, attachments, wallpaper, and drawings. It keeps your name, your photo, the FCM token, notification wording, the animation switch, the last update-check time, and the Duet now-playing line. The next process start deletes a leftover music database and song copies from an older build. Unpair does not delete map tiles, gallery copies, or the onboarding-done flag.
 
 ## Code map
 

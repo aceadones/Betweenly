@@ -26,15 +26,20 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Sound on a video. If this is denied, the video is recorded without audio. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- Songs already on this phone. Asked only from Hear together. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <!-- Same library on Android 9–12. Android 13+ uses READ_MEDIA_AUDIO instead. -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!-- These permissions would otherwise mark the hardware as required. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- Duet, and a browser for the install page. -->
+    <queries>
+        <package android:name="com.nextlayer.duet" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
 
     <application
         android:name=".App"
@@ -81,10 +86,14 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- Duet binds with MUSIC_BRIDGE. Caller check is in the service. No custom permission. -->
         <service
-            android:name=".music.MusicPlayService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+            android:name=".MusicBridgeService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.nextlayer.betweenly.action.MUSIC_BRIDGE" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".FcmService"

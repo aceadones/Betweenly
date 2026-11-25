@@ -296,7 +296,7 @@ object Inbox {
                 "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
                 "unsend", "wall" -> ChatInbound.handle(context, json)
                 "draw" -> DrawInbound.handle(context, json)
-                "music", "plist" -> MusicInbound.handle(context, json)
+                "music", "plist" -> DuetBridge.deliver(context, json)
             }
         } catch (_: Exception) {
             // One bad field should not drop the rest of the mailbox.

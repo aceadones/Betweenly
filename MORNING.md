@@ -1,7 +1,7 @@
 # Morning handoff (written 2026-11-25)
 
 ## What to install
-- **Historical V1.0.0** (stable, tested, shipped under the previous name): GitHub release `v1.0.0` on the private repo `aceadones/Loviedowpie` (`Loviedowpie-v1.0.0.apk`, 1.9 MB). Install on both phones, allow "install unknown apps".
+- **Historical V1.0.0** (stable, tested, shipped under the previous name): GitHub release `v1.0.0` on the private repo `aceadones/Betweenly` (`Loviedowpie-v1.0.0.apk`, 1.9 MB). Install on both phones, allow "install unknown apps".
 - **Betweenly 0.0.1** (package `com.nextlayer.betweenly`) is NOT published. It lives on the local branch `v2`; a debug/release APK can be built with `cd android && ./gradlew :app:assembleRelease`.
 
 ## Done and verified on the emulator (against the live relay, with a desktop partner)

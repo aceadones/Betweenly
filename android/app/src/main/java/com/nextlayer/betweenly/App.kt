@@ -36,5 +36,18 @@ class App : Application() {
         if (Store.isPaired(this)) {
             AppScope.scope.launch { Inbox.process(this@App) }
         }
+        // DATA-FLOW: none. Deletes leftover files from the old in-app player.
+        AppScope.scope.launch { dropLegacyMusic() }
+    }
+
+    /** Older builds kept a music database and song copies. Duet has its own. */
+    private fun dropLegacyMusic() {
+        try {
+            deleteDatabase("betweenly-music.db")
+            java.io.File(filesDir, "music").deleteRecursively()
+            java.io.File(cacheDir, "music").deleteRecursively()
+        } catch (_: Exception) {
+            // A locked file is tried again the next time the process starts.
+        }
     }
 }

@@ -82,7 +82,7 @@ object LdColors {
     val checkerDark = Color(0xFFD9D9DE)
     /** Warm plate under a brush sample. */
     val previewPlate = Color(0xFFF7F4EF)
-    /** Music card wash in the same rose family as [primary]. */
+    /** Rose wash. The Duet card paints with [navy] and [primary]. */
     val musicDeep = Color(0xFFA3123E)
     val musicWashTop = Color(0xFFFFE3EA)
     val musicWashBottom = Color(0xFFFF8AA6)

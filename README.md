@@ -11,7 +11,7 @@ A private app for two people in a long-distance relationship. Android only, side
 - 📍 Location about every 10 minutes, or live while you leave it on. Battery % rides along. Distance is calculated on your phone.
 - 🔔 Ring their phone for up to two minutes, or send a short ping. Notification words are chosen on each phone.
 - 🎨 A shared drawing page, plus a home-screen drawing widget.
-- 🎵 A music player for songs already on the phone, playlists, and Listen together.
+- 🎵 Listen together through Duet, a separate music app. Betweenly carries the encrypted messages. It does not play songs.
 - 🔄 In-app updates from the relay, checked at most once a day unless you ask.
 
 Accent is a crimson rose (`#D6245A`, deep `#A3123E`, soft `#FFE3EA`). Light screens use a warm blush background. Dark screens use deep wine (`#1A0A12` toward `#2A0F1C`). Success green and destructive red stay semantic colors.
@@ -26,7 +26,7 @@ Screenshots are not in this repository yet. When they are added, put them here:
 | Home (location, battery, distance, ring, ping) | `docs/screenshots/home.png` |
 | Chat | `docs/screenshots/chat.png` |
 | Drawing | `docs/screenshots/draw.png` |
-| Hear together | `docs/screenshots/music.png` |
+| Duet card | `docs/screenshots/music.png` |
 
 Until those files exist, the tables below are the description an AI should trust.
 
@@ -34,7 +34,7 @@ Until those files exist, the tables below are the description an AI should trust
 
 The phone app does not download from GitHub. A person installs the APK. Later updates can come from the relay (see [Updates](#updates)).
 
-1. On a computer, open the GitHub release **v0.0.1** for `aceadones/Loviedowpie` (the repository name is still Loviedowpie). The asset is `Betweenly-v0.0.1.apk`. `scripts/release.sh` is what publishes that release.
+1. On a computer, open the GitHub release **v0.0.1** for `aceadones/Betweenly` (the repository name is still Loviedowpie). The asset is `Betweenly-v0.0.1.apk`. `scripts/release.sh` is what publishes that release.
 2. Copy the APK to the phone. The build is **arm64-v8a only**.
 3. Allow installation from that source (Android calls this “install unknown apps”).
 4. Install and open Betweenly. Both people need this same build. The crypto domain string is `betweenly-v1` (`core/src/lib.rs`). A different build cannot pair with it.
@@ -160,7 +160,7 @@ The words on the receiver are chosen on that phone: default title “Alarm” an
 
 | | |
 |---|---|
-| What it does | Local notices for chat, drawings, pings, music invites, and the ring alarm. Profile chooses the words. The lock screen always uses a public version: title “Betweenly”, text “Notification”. |
+| What it does | Local notices for chat, drawings, pings, listen-together invites, and the ring alarm. Profile chooses the words. The lock screen always uses a public version: title “Betweenly”, text “Notification”. |
 | Data | The wording, the custom line, and the alarm disguise. Partner name and message text are used only in On mode, and only from data already decrypted on this phone. |
 | Where it goes | Phone only. None of this text is sent. |
 | Encryption | Not applicable. Stored in app prefs. |
@@ -171,11 +171,11 @@ The words on the receiver are chosen on that phone: default title “Alarm” an
 
 Wording modes (default **Off**):
 
-- **On.** Title is the partner’s name. Body is the message text (one line, 140 characters), or a short label such as Photo, Video, Sticker, GIF, or File. A drawing says “New drawing”. A ping says “New message”. A music invite says “Listen together?”.
+- **On.** Title is the partner’s name. Body is the message text (one line, 140 characters), or a short label such as Photo, Video, Sticker, GIF, or File. A drawing says “New drawing”. A ping says “New message”. A listen-together invite says “Listen together?”. The notice does not include the song title.
 - **Off.** Title “Betweenly”, text “New message”, for every event including drawings and invites. The notice is still posted.
 - **Custom.** The saved line is the whole title. An empty custom line falls back to Betweenly / New message.
 
-There is a separate **New drawings** switch. Off means a drawing does not post a notice. The picture is never attached. Message notices are not suppressed by an in-app switch; Off mode changes the words. `Store.notifyMessages` is saved and kept across unpair, and the current UI does not read it. Android’s own notification settings can block the channels. Notices are not posted while the activity is in the foreground, except a ping, which still shows so it can be heard.
+There is a separate **New drawings** switch. Off means a drawing does not post a notice. The picture is never attached. Message notices are not suppressed by an in-app switch; Off mode changes the words. `Store.notifyMessages` is saved and kept across unpair, and the current UI does not read it. Android’s own notification settings can block the channels. Notices are not posted while the activity is in the foreground, except a ping and a listen-together invite. The invite’s button opens Duet, or the Duet releases page when Duet is not installed.
 
 ### Chat: text, reactions, reply, unsend
 
@@ -187,7 +187,7 @@ There is a separate **New drawings** switch. Off means a drawing does not post a
 | Encryption | Session XChaCha20-Poly1305. On disk, the JSON is AES-256-GCM under the Android Keystore key `betweenly_wrap`, in `chat.db`. |
 | Retention | Mailbox rules. This phone keeps history until you clear it (Chat menu) or unpair. The list UI shows the newest 500 rows; older rows can remain in the database until clear or unpair. Clear history deletes messages and attachment files on this phone only. It does not tell the partner and does not remove the wallpaper file. A failed unsend is remembered (up to 40 ids) and retried. |
 | Permissions | Notifications if a background message should show a notice. |
-| Battery and data | One small ciphertext per send, plus one empty FCM wake except for unsend. While the app is open and resumed, the inbox is pulled every 5 seconds (every 2 seconds during Listen together). That pull stops when you leave the app. |
+| Battery and data | One small ciphertext per send, plus one empty FCM wake except for unsend. While the app is open and resumed, the inbox is pulled every 5 seconds (every 2 seconds while Duet has a listen-together session active). That pull stops when you leave the app. |
 | Turn it off | Don’t send. Clear history for a local wipe. Unpair wipes the chat. Mute the channel in system settings. |
 
 ### Photos, videos, files, stickers, GIFs
@@ -255,24 +255,22 @@ There is a separate **New drawings** switch. Off means a drawing does not post a
 | Battery and data | Strokes stay on the phone while you draw. A send is one PNG upload and one small message, with no FCM wake. The widget’s 30-minute refresh does not use the radio. |
 | Turn it off | Don’t send. Drawing notices have their own switch. Remove the widget from the home screen. Unpair deletes the local drawings. |
 
-### Music, playlists, and Listen together
+### Listen together, through Duet
 
-The screen title is “Hear together”. The Activity card is titled “Music” (or the current song) with the subtitle “Your songs” when nothing is loaded. Detail is in [MUSIC.md](MUSIC.md).
+Playback, playlists, and the queue live in Duet (`com.nextlayer.duet`). Betweenly does not read the music library and does not play audio. The Activity tab has a Duet card. See [Duet (separate app)](#duet-separate-app).
 
 | | |
 |---|---|
-| What it does | Plays songs already on this phone. Library, albums, likes, queue, playlists, shuffle, repeat, and a sleep timer (15, 30, 45, or 60 minutes, a coroutine delay, not an alarm). A playlist can be marked shared. Listen together invites the partner and syncs play, pause, seek, queue, and track. |
-| Data | `music`: `t`, `op` (`invite`, `accept`, `leave`, `queue`, `track`, `play`, `pause`, `seek`, `sync`), `ts`, `pos`, optional `echo`, optional `track`, optional `queue` (at most 20). A track has `id`, `title` (120), `artist` (80), `dur`, `src`, `extra`. `extra` on the wire is only a file id and key, never a `content://` URI. `plist`: `op` (`create`, `rename`, `add`, `remove`, `delete`, `snapshot`), `id`, `name` (80), `tracks` (at most 80), `ts`. |
-| Where it goes | Sealed mailbox messages. Solo playback sends nothing. `invite` uses `wake` on. Every other music op uses `wake` off. Playlist edits use `wake` off and are sent only for a playlist marked shared. A song from this phone that is played in a session, or added to a shared playlist, is uploaded with `FileTransfer` when it is 20 MB or smaller. Larger songs stay on the phone that has them. The partner’s decrypted copy goes to `cacheDir/music` and is deleted when the session releases. Offline copies you ask for go to `filesDir/music/offline`. |
-| Encryption | Session key for commands. File key for uploaded audio. |
-| Retention | Mailbox rules. Uploaded audio: 7 days on the relay. The local database `betweenly-music.db` (playlists, likes, queue, offline index, settings) is created the first time Music opens or a playlist message arrives. Unpair does not delete that database or `filesDir/music/offline`. |
-| Permissions | `READ_MEDIA_AUDIO` on Android 13+. `READ_EXTERNAL_STORAGE` (max SDK 32) on Android 9–12. Notifications only if Keep playing in background is on. |
-| Battery and data | Solo play is local. Listen together, while the app is in front, sets a 2-second inbox poll. There is no background poller, so a session that keeps playing after you leave the app drifts until you return. Whoever is playing sends `sync` about every 10 seconds. A seek happens if the position is off by more than 400 ms. An invite is one small message plus one empty FCM wake. A shared song is one encrypted upload up to 20 MB, downloaded by the partner only for that session unless they tap Download for offline. The offline cap defaults to 500 MB (choices 100, 250, 500, 1000, 2000). |
-| Turn it off | Leave Listen together, or leave the screen with Keep playing off. Turn a playlist’s sharing off: that stops further sends and does not delete the partner’s copy. Deleting a shared playlist does send `delete`. Clear downloads removes offline copies only. Deny audio permission and the on-phone lists stay empty. |
+| What it does | Duet hands Betweenly a `music` or `plist` JSON object. Betweenly seals it and posts it to the mailbox. The partner’s Betweenly opens it and gives that same JSON to their Duet. An invite with Duet not connected posts a local notice. |
+| Data | The JSON Duet supplied. Betweenly keeps it only when `t` is `music` or `plist`, and only when the UTF-8 is at most 60,000 bytes. It does not add a key, a session, or a relay URL. `wake` is on only when `t` is `music` and `op` is `invite`. Every other op, including every `plist`, uses `wake` off. |
+| Where it goes | Sealed mailbox message, same path as chat. The bridge between the two apps is a local binder on this phone. Duet never talks to the relay. Betweenly does not upload an audio file for these messages. |
+| Encryption | Session XChaCha20-Poly1305. The relay stores ciphertext. |
+| Retention | Mailbox rules. Betweenly does not keep a music database. A now-playing line from Duet (title, artist, playing, and the time it arrived) sits in SharedPreferences `duet` and is treated as idle after 60 seconds. Process start deletes a leftover `betweenly-music.db`, `filesDir/music`, and `cacheDir/music` from older builds. |
+| Permissions | None for audio. Notifications for the invite. The manifest can see whether the Duet package is installed. |
+| Battery and data | Solo listening never enters Betweenly. While Duet says a session is active and this app is in front, the inbox pull is every 2 seconds. It stops when you leave the app, when Duet disconnects, or when you unpair. An invite is one small ciphertext plus one empty FCM wake. Other music and playlist messages wait for the next pull. |
+| Turn it off | Leave the session in Duet. Uninstall Duet. Unpair stops the sealed messages. |
 
-Keep playing in background defaults to off. When it is on, `MusicPlayService` shows a low-importance ongoing notice, “Music” and “Playing” or “Paused”, with no song title, and play/pause and next. There is no media session. The service does not own the player. After 10 minutes of pause the session releases. An invite that arrives while Music is closed is kept for 10 minutes and posts “Listen together?”. Opening Music applies it. It does not start playback by itself.
-
-No online music source is registered. `OnlineSourceStub` returns nothing and opens no connection.
+The Activity card does not poll. It reads Duet when the Activity tab resumes, and when Duet pushes a new line. If Duet is missing, the card says “Music, together. Install the Duet app” and opens `https://github.com/aceadones/Duet/releases` in the browser. Betweenly’s own HTTP client does not request that page. If Duet is installed, the subtitle is “Playing: Title - Artist” while a line is fresh, or “Open Duet”. The chip is a read-only Playing or Paused hint. The tap opens Duet.
 
 ### Updates
 
@@ -280,7 +278,7 @@ No online music source is registered. `OnlineSourceStub` returns nothing and ope
 |---|---|
 | What it does | Compares `versionCode` with the relay’s public JSON. A newer build can be downloaded, SHA-256 checked, and handed to the system installer. Android still requires the APK to be signed with a key it will accept. |
 | Data | `versionCode`, `versionName`, `sha256`, `size`, `notes`. No pairing data. |
-| Where it goes | `GET /update/latest` and, if you install, `GET /update/apk` on the relay. The phone does not call GitHub. A developer running `scripts/release.sh` also uploads that APK to a GitHub release on `aceadones/Loviedowpie`. |
+| Where it goes | `GET /update/latest` and, if you install, `GET /update/apk` on the relay. The phone does not call GitHub. A developer running `scripts/release.sh` also uploads that APK to a GitHub release on `aceadones/Betweenly`. |
 | Encryption | HTTPS only. The JSON and the APK are not end-to-end encrypted. The phone checks SHA-256 before install. |
 | Retention | The published APK stays in relay KV until the next release replaces `upd:json` and `upd:apk`. The download is `cacheDir/update.apk` and is deleted if the hash does not match. A quiet check runs at most once every 24 hours. A failed check does not move that clock. Profile can force a check. |
 | Permissions | Internet. Request-install-packages, and the system “unknown apps” screen once. |
@@ -301,7 +299,7 @@ No online music source is registered. `OnlineSourceStub` returns nothing and ope
 
 ### What the four tabs are
 
-Activity (draw and music), Chat, Location (partner card, sharing, ring, ping, distance), Profile (name, photo, saved drawings, notifications, Reduce animations, update check, safety number, unpair). The map, camera, drawing studio, and music screen cover the dock. Onboarding and pairing are full screen. A widget or a notice can open the app with `open=track`, `open=chat`, `open=activity`, or `open=settings` (Profile).
+Activity (draw, and a card that opens Duet), Chat, Location (partner card, sharing, ring, ping, distance), Profile (name, photo, saved drawings, notifications, Reduce animations, update check, safety number, unpair). The map, camera, and drawing studio cover the dock. Onboarding and pairing are full screen. A widget or a notice can open the app with `open=track`, `open=chat`, `open=activity`, or `open=settings` (Profile). A listen-together notice opens Duet instead.
 
 Reduce animations is on Profile, stored as `animations_enabled`, default on, kept across unpair. When it is off, `Motion.tween` and `Motion.spring` snap. The switch is not sent.
 
@@ -313,7 +311,7 @@ Reduce animations is on Profile, stored as `animations_enabled`, default on, kep
 | Session key and file keys | Yes, in Keystore-wrapped storage and in memory while sending | Yes, the same keys, derived on their phone | No | No | No | No |
 | Safety number | Yes | Yes, the same number | No | No | No | No |
 | Chat text, reactions, link cards | Yes | Yes | Ciphertext only | That a wake happened, not the text | No | TLS size and timing to the relay |
-| Photos, video, files, drawing PNGs, shared songs, wallpaper JPEGs | Yes | Yes, after decrypt | Ciphertext at `/file/{id}` for 7 days | Wake only when the pointer message asks for one. Drawings, wallpaper, playlists, and most music commands do not | No | TLS size and timing |
+| Photos, video, files, drawing PNGs, wallpaper JPEGs | Yes | Yes, after decrypt | Ciphertext at `/file/{id}` for 7 days | Wake only when the pointer message asks for one. Drawings and wallpaper do not | No | TLS size and timing |
 | Location and battery | Yes | Yes, after decrypt | Ciphertext only | No wake on routine points. A wake on share on/off and on the last live point | The map tiles for squares on screen, and your IP, when a phone opens the map | TLS size and timing |
 | Distance | Yes, computed locally | No, unless they compute their own | No | No | Only if you open the map | No |
 | FCM device token | Stored on this phone | No | Yes, stored under your inbox id for up to 60 days, so it can send an empty ping | Yes. It is their token | No | TLS to Google and to the relay |
@@ -321,7 +319,9 @@ Reduce animations is on Profile, stored as `animations_enabled`, default on, kep
 | Notification words | Yes | No. Each phone uses its own wording | No | No | No | No |
 | Link-preview fetch | Your phone requested that URL | The card you sealed, not the site | No | No | No | The website, and anyone on that HTTPS path, sees your IP |
 | Update JSON and APK | Yes | No pairing data in it | Yes, it is public on the relay | No | No | Yes, it is not end-to-end encrypted |
-| Songs already on the phone, likes, private playlists | Yes | No | No | No | No | No |
+| Listen-together and shared-playlist JSON | Yes, sealed, and only the JSON Duet handed over | Yes, after decrypt, then only inside Duet | Ciphertext only | A wake for a music invite. Not for other music ops or playlists | No | TLS size and timing |
+| Duet now-playing line | Yes, on the Activity card | No | No | No | No | No |
+| Duet install page | The browser, if you tap Install and a browser is installed | No | No | No | No | The browser’s own request to GitHub. Betweenly does not make it |
 | This phone’s IP | Your network | No | Yes, on every relay call | Yes, when a wake is delivered or a token is fetched | Yes, when a tile is fetched | Yes |
 
 Play services location is used to read a fix. This app’s code does not POST coordinates to Google. Android’s location provider can still use the network on its own.
@@ -334,7 +334,7 @@ Play services location is used to read a fix. This app’s code does not POST co
 - No cloud backup and no device-to-device transfer of app data (`allowBackup` is false, and `data_extraction_rules.xml` excludes every domain).
 - No Google Maps SDK. Map pictures are OpenStreetMap tiles.
 - No standing access to the photo library.
-- No online music extractor in this build.
+- No music player in this app, and no fetch of a song or a catalog. Duet is a separate app. The Install button can open a browser on the Duet releases page.
 
 ## Threat model and limits
 
@@ -344,7 +344,7 @@ In scope: a curious relay operator, a person who finds the relay URL, and a pass
 - The relay sees timing, ciphertext sizes, IP addresses, and FCM tokens. Short messages are padded to a multiple of 512 bytes before encryption, so a location update and a short chat look the same size on the wire (560 bytes of ciphertext). Large messages and files are not padded to look small. File sizes still show the size of the encrypted blob.
 - There is one long-term session key per pair. There is no ratchet and no forward secrecy. Someone who later obtains the session key can decrypt messages they also captured.
 - Replay of an old counter is rejected. A gap is accepted, so a lost send does not stall the pair. The mailbox holds at most 20 blobs; a 21st drops the oldest.
-- Routine location and most drawing, wallpaper, and music messages do not wake the other phone. They wait until that phone pulls.
+- Routine location, drawings, wallpaper, playlist JSON, and music JSON other than an invite do not wake the other phone. They wait until that phone pulls.
 - The last shared place remains on the partner’s phone after you turn sharing off.
 - A stolen unlocked phone can read what the app can read. The Keystore key does not require user authentication, so a background alarm can unwrap the session after the device has been unlocked once since boot.
 - The safety number detects a substituted handshake only if the two people compare it. Skipping that check trusts the relay to have passed the real SPAKE2 messages.
@@ -352,7 +352,7 @@ In scope: a curious relay operator, a person who finds the relay URL, and a pass
 - Link previews tell the website the sender’s IP.
 - Map tiles tell the tile server which squares were on screen, and the IP.
 - Update metadata and the APK are public.
-- Copies saved to the system gallery or Downloads stay after unpair. The music database and offline songs also stay after unpair.
+- Copies saved to the system gallery or Downloads stay after unpair. Betweenly does not keep a music library. The next process start deletes a leftover music database and song copies from an older build. The Duet now-playing line is not the pair and stays until Duet replaces it.
 - Notification mode Off still posts a notice. It changes the words.
 - Without Firebase keys in the build, nothing can wake a sleeping phone. Messages wait until the app is opened or the process starts.
 - A compromised phone, a determined attacker with the unlocked device, and legal compulsion of a person who can see the screen are outside what the cryptography stops.
@@ -365,10 +365,10 @@ In scope: a curious relay operator, a person who finds the relay URL, and a pass
 | `ACCESS_FINE_LOCATION` | Sharing and live fixes, and the local distance read. |
 | `ACCESS_COARSE_LOCATION` | Fallback if fine location is denied. |
 | `ACCESS_BACKGROUND_LOCATION` | The 10-minute sharing alarm with the screen off. The UI asks for this on its own. |
-| `POST_NOTIFICATIONS` | Chat, drawing, ping, music, live, and ring notices. |
+| `POST_NOTIFICATIONS` | Chat, drawing, ping, listen-together invite, live, and ring notices. |
 | `FOREGROUND_SERVICE` | Required for the services below. |
 | `FOREGROUND_SERVICE_LOCATION` | Live location. |
-| `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | The ring tone service and, if you opt in, background music. |
+| `FOREGROUND_SERVICE_MEDIA_PLAYBACK` | The ring tone service. |
 | `USE_FULL_SCREEN_INTENT` | The ring notice can appear over the lock screen. |
 | `REQUEST_INSTALL_PACKAGES` | Hand an update APK to the system installer. |
 | `RECEIVE_BOOT_COMPLETED` | Re-arm the 10-minute sharing alarm after reboot. Live mode is not started from boot. |
@@ -377,8 +377,6 @@ In scope: a curious relay operator, a person who finds the relay URL, and a pass
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | The UI can ask Android to let the sharing alarm run during Doze. It is not granted automatically. |
 | `CAMERA` | The in-app camera. Optional hardware. |
 | `RECORD_AUDIO` | Sound on a video. Optional. Denied means silent video. |
-| `READ_MEDIA_AUDIO` | List songs already on the phone. Android 13+. Asked from Hear together. |
-| `READ_EXTERNAL_STORAGE` (max SDK 32) | The same library on Android 9–12. |
 
 ## Network endpoints
 
@@ -417,8 +415,8 @@ Play services location is a library call on the device. This app does not name a
 | Camera captures | `cacheDir/camera` | App-private | Not the pair record. Unsent files are deleted when you leave the camera |
 | Map tiles | `cacheDir/tiles` | Ordinary PNGs, no location identity beyond the tile numbers | Not deleted by unpair |
 | Update APK | `cacheDir/update.apk` | The published APK | Not part of the pair |
-| Music library | `databases/betweenly-music.db` and `filesDir/music/offline` | App-private. A shared song’s file key can sit in the database `extra` column | Not deleted by unpair |
-| Listen-together decrypt cache | `cacheDir/music` | Decrypted audio while the session is alive | Released when the session releases, including unpair if the screen closes |
+| Duet now playing | SharedPreferences `duet` (`title`, `artist`, `playing`, `at`) | App-private. No key. A line older than 60 seconds is treated as idle | Not part of the pair. Unpair does not delete it |
+| Old in-app player files | `databases/betweenly-music.db`, `filesDir/music`, `cacheDir/music` | Only if an older build left them. This build does not create them | Deleted the next time the process starts |
 | Open-in-another-app cache | `cacheDir/chat-open`, `cacheDir/chat-anim` | Short-lived plaintext | Deleted with chat wipe |
 | Gallery and Downloads copies | System media store, outside the app | Whatever the system uses | Left in place |
 
@@ -433,9 +431,9 @@ Play services location is a library call on the device. This app does not name a
 | Wake | `?wake=1` on a mailbox post. The worker sends an empty FCM data message `{w:"1"}`. |
 | SPAKE2 | The password-authenticated handshake. The password is the pairing code. |
 | Safety number | Six digits derived from the session key. Both phones should show the same number. |
-| File key | A one-time 32-byte key for one attachment, drawing, wallpaper, or shared song. It travels only inside a sealed message. |
+| File key | A one-time 32-byte key for one attachment, drawing, or wallpaper. It travels only inside a sealed message. Betweenly does not put one in a Duet bundle. |
 | Tombstone | A chat row with `t` = `gone` after unsend. |
-| Listen together | The sealed `music` session. The screen title is Hear together. |
+| Listen together | A sealed `music` JSON that Duet asked Betweenly to carry. The player is Duet. |
 | FCM | Firebase Cloud Messaging. Used only as an empty wake. |
 
 ## Ask an AI about this app
@@ -457,7 +455,7 @@ File map for checking a claim:
 | Desktop test partner | `core/examples/partner.rs` |
 | Relay routes, TTL, FCM wake | `relay/src/index.ts`, `relay/wrangler.toml` |
 | Phone HTTP client | `android/app/src/main/java/com/nextlayer/betweenly/Relay.kt` |
-| Message JSON and inbox | `Msg.kt`, `ChatInbound.kt`, `DrawInbound.kt`, `MusicInbound.kt` |
+| Message JSON and inbox | `Msg.kt`, `ChatInbound.kt`, `DrawInbound.kt`, `DuetBridge.kt` |
 | Pairing | `Pairing.kt`, `ui/PairScreen.kt`, `ui/PairSession.kt` |
 | Keystore | `Secure.kt`, `Store.kt` (`unpair`) |
 | Location, battery, distance | `LocationSharing.kt`, `LiveLocationService.kt`, `ui/HomeScreen.kt` |
@@ -469,7 +467,7 @@ File map for checking a claim:
 | Notifications | `NotificationTexts.kt`, `ChatNotifications.kt`, `ui/NotificationSettings.kt` |
 | Camera | `ui/CameraSession.kt`, `ui/CameraScreen.kt` |
 | Drawing | `DrawStore.kt`, `ui/DrawingStudioScreen.kt`, `ui/DrawingWidget.kt` |
-| Music | `music/MusicSession.kt`, `music/MusicWire.kt`, `music/PlaylistWire.kt`, `music/MusicDb.kt`, `music/OfflineStore.kt`, `music/MusicPlayService.kt` |
+| Duet bridge | `MusicBridgeService.kt`, `DuetBridge.kt`, `DuetState.kt` |
 | Map tiles | `ui/TileMap.kt` |
 | Updates | `Updater.kt`, `scripts/release.sh` |
 | Permissions | `android/app/src/main/AndroidManifest.xml` |
@@ -508,7 +506,7 @@ cd core && cargo build --example partner
 ./target/debug/examples/partner https://your-relay.example <CODE>
 ```
 
-Commands: `chat`, `ring` (legacy, no id), `share on|off`, `loc <lat> <lon> <bat>` (this tool sends `wake`, the phone’s routine `loc` does not), `draw`, `photo`, `sticker`, `gif`, `file`, `unsend`, `wall color <0-5>`, `react <id> <emoji>`, `quit`. It does not play audio or send `music` or `plist`.
+Commands: `chat`, `ring` (legacy, no id), `share on|off`, `loc <lat> <lon> <bat>` (this tool sends `wake`, the phone’s routine `loc` does not), `draw`, `photo`, `sticker`, `gif`, `file`, `unsend`, `wall color <0-5>`, `react <id> <emoji>`, `quit`. It does not play audio. If a `music` or `plist` blob arrives, the phone forwards it to Duet or, for an invite with Duet disconnected, posts a notice. The tool does not send those types.
 
 Release, from a maintainer machine:
 
@@ -517,12 +515,27 @@ scripts/release.sh
 scripts/release.sh path/to/notes.txt
 ```
 
-That script reads `versionName` and `versionCode`, builds the release APK, copies `dist/Betweenly-v<versionName>.apk`, writes `dist/latest.json`, puts `upd:json` and `upd:apk` in the Worker KV, and runs `gh release create` on `aceadones/Loviedowpie` with tag `v<versionName>`. `dist/` is gitignored.
+That script reads `versionName` and `versionCode`, builds the release APK, copies `dist/Betweenly-v<versionName>.apk`, writes `dist/latest.json`, puts `upd:json` and `upd:apk` in the Worker KV, and runs `gh release create` on `aceadones/Betweenly` with tag `v<versionName>`. `dist/` is gitignored.
 
 Manual checks: [TESTING.md](TESTING.md).
 
+## Duet (separate app)
+
+Duet is the music app. Betweenly is the pair. They are two installs that can be used apart, and they can be used together.
+
+| | |
+|---|---|
+| App | Duet, package `com.nextlayer.duet`. Repository [aceadones/Duet](https://github.com/aceadones/Duet). |
+| What Duet does | Plays songs, playlists, a queue, and likes on its own. It can bind to Betweenly when you want to listen with your partner or share a playlist. |
+| What Betweenly does | Keeps the pair, the session key, and the relay. It seals the `music` and `plist` JSON Duet gives it, and it hands the partner’s decrypted JSON back to Duet. |
+| What never crosses | Keys, session bytes, and relay URLs stay in Betweenly. Duet does not open a connection to the relay. The relay still sees only ciphertext. |
+| How they trust each other | Both are signed with the same release keystore. Betweenly’s `MusicBridgeService` is exported and checks `checkSignatures` plus the package name `com.nextlayer.duet` on every bind and every message. A debug build accepts that package name without the signature match so an emulator can use a different debug key. |
+| If Duet is missing | The Activity card and an invite notice offer the releases page, `https://github.com/aceadones/Duet/releases`. That open is a browser intent. |
+| Licence | GNU Affero General Public License, version 3 or later, the same as Betweenly. `LICENSE` and `NOTICE` are at the root of each repository. |
+| Donate | Buy me a coffee (Razorpay): <link coming soon> |
+
 ## Contributing and licence
 
-`LICENSE` and `NOTICE` say Betweenly is free software under the GNU Affero General Public License, version 3 or later, copyright 2026 Next Layer Labs, with no warranty. `core/Cargo.toml` says `license = "MIT"`. Those files disagree. Third-party pieces keep their own licences; see [THIRD-PARTY.md](THIRD-PARTY.md).
+`LICENSE` and `NOTICE` say Betweenly is free software under the GNU Affero General Public License, version 3 or later, copyright 2026 Next Layer Labs, with no warranty. Duet is under that same licence in its own repository. `core/Cargo.toml` says `license = "MIT"`. Those files disagree. Third-party pieces keep their own licences; see [THIRD-PARTY.md](THIRD-PARTY.md). Buy me a coffee (Razorpay): <link coming soon>.
 
 Changes should stay small, keep the four constraints (battery, data, privacy, lightweight), and keep `PRIVACY-DATA-FLOW.md` in step with every network call. Network calls in code are marked `DATA-FLOW:`.
