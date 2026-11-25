@@ -141,7 +141,9 @@ object LdColors {
         navIdle = Color(0xFF5C7290),
         dialog = Color(0xFFF4F9FF),
         textPrimary = Color(0xFF185FC4),
-        menu = Color(0xD6FFFFFF),
+        // White at 96% so chat text and photos do not show through a popup.
+        menu = Color(0xF5FFFFFF),
+        menuBorder = Color(0x3310284F),
     )
 
     val dark = LdPalette(
@@ -169,7 +171,9 @@ object LdColors {
         navIdle = Color(0xFFB7C7DC),
         dialog = Color(0xFF122848),
         textPrimary = Color(0xFF7EB6FF),
-        menu = Color(0xFF122848),
+        // Navy #10284F at 97%. Light text (ink) sits on this fill.
+        menu = Color(0xF710284F),
+        menuBorder = Color(0x66FFFFFF),
     )
 
     val colors: LdPalette
@@ -201,8 +205,13 @@ class LdPalette(
     val navIdle: Color,
     val dialog: Color,
     val textPrimary: Color,
-    /** Popup fill: translucent white in light, navy glass in dark. */
+    /**
+     * Popup fill. Light is white at 96% opacity. Dark is navy #10284F at 97%.
+     * Opaque enough that chat text and photos do not read through menus.
+     */
     val menu: Color,
+    /** Thin stroke around menus and dialogs. */
+    val menuBorder: Color,
 )
 
 private val BaseType = Typography()
@@ -333,6 +342,12 @@ fun Modifier.ldGlass(shape: Shape = RoundedCornerShape(28.dp), strong: Boolean =
         .clip(shape)
         .background(fill)
         .border(width = 1.dp, color = c.glassBorder, shape = shape)
+}
+
+/** Mostly opaque popup surface: theme menu fill plus a thin border. */
+@Composable
+fun Modifier.ldPopupFrame(shape: Shape = MaterialTheme.shapes.extraLarge): Modifier {
+    return this.border(width = 1.dp, color = LdColors.colors.menuBorder, shape = shape)
 }
 
 /** Black pill with a white arrow knob. Primary actions such as Continue. */

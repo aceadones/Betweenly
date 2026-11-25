@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -74,9 +75,11 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -220,6 +223,21 @@ private fun ChatBody(
     val today = LocalDate.now()
     val rows = remember(messages, today) { buildRows(messages) }
     val selected = messages.firstOrNull { it.id == menuId }
+    // Index 0 is the newest row (reverseLayout). Scroll there after a send or a new message.
+    val listState = rememberLazyListState()
+    var composerPx by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
+    val composerHeight = with(density) { composerPx.toDp() }
+    val newestId = (rows.firstOrNull() as? ChatRow.Msg)?.message?.id
+    LaunchedEffect(newestId, rows.size) {
+        if (newestId != null) listState.animateScrollToItem(0)
+    }
+    LaunchedEffect(composerPx) {
+        // A taller composer or reply quote must not cover the bubble we are already reading.
+        if (newestId != null && composerPx > 0 && listState.firstVisibleItemIndex <= 1) {
+            listState.animateScrollToItem(0)
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -254,7 +272,8 @@ private fun ChatBody(
                                 onDismissRequest = { overflowOpen = false },
                                 containerColor = LdColors.colors.menu,
                                 tonalElevation = 0.dp,
-                                border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+                                shape = MaterialTheme.shapes.extraSmall,
+                                border = BorderStroke(1.dp, LdColors.colors.menuBorder),
                             ) {
                                 DropdownMenuItem(
                                     text = {
@@ -271,8 +290,14 @@ private fun ChatBody(
                             }
                         }
                     }
+                // The composer overlays the list. Scaffold already lifts this column by the
+                // IME inset, so the list only needs clearance for the composer itself.
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (rows.isEmpty()) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.fillMaxSize().padding(bottom = composerHeight),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Text(
                             stringResource(R.string.chat_empty),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -280,9 +305,16 @@ private fun ChatBody(
                     }
                 } else {
                     LazyColumn(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
                         reverseLayout = true,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        // reverseLayout uses bottom padding as the gap before item 0 (visual bottom).
+                        contentPadding = PaddingValues(
+                            start = 12.dp,
+                            top = 8.dp,
+                            end = 12.dp,
+                            bottom = composerHeight + 8.dp,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         items(
@@ -326,6 +358,8 @@ private fun ChatBody(
                 }
                 Column(
                     Modifier
+                        .align(Alignment.BottomCenter)
+                        .onSizeChanged { composerPx = it.height }
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                         .fillMaxWidth()
                         .ldGlass(RoundedCornerShape(28.dp), strong = true),
@@ -380,7 +414,8 @@ private fun ChatBody(
                                 onDismissRequest = { attachOpen = false },
                                 containerColor = LdColors.colors.menu,
                                 tonalElevation = 0.dp,
-                                border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+                                shape = MaterialTheme.shapes.extraSmall,
+                                border = BorderStroke(1.dp, LdColors.colors.menuBorder),
                             ) {
                                 DropdownMenuItem(
                                     text = {
@@ -507,6 +542,7 @@ private fun ChatBody(
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -588,7 +624,9 @@ private fun MessageActions(
     val copy = copyable(message)
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.ldPopupFrame(),
         containerColor = LdColors.colors.menu,
+        tonalElevation = 0.dp,
         titleContentColor = LdColors.colors.ink,
         textContentColor = LdColors.colors.ink,
         title = { Text(stringResource(R.string.chat_actions)) },

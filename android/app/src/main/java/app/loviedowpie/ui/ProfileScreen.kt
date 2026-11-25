@@ -122,7 +122,9 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     if (confirm) {
         AlertDialog(
             onDismissRequest = { confirm = false },
+            modifier = Modifier.ldPopupFrame(),
             containerColor = LdColors.colors.menu,
+            tonalElevation = 0.dp,
             titleContentColor = LdColors.colors.ink,
             textContentColor = LdColors.colors.ink,
             title = { Text(stringResource(R.string.unpair_title)) },

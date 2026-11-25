@@ -122,9 +122,17 @@ internal class CameraSession(
     private var boundKey = ""
     private var activeFps: Int? = null
 
-    /** True when the phone has more than one camera, so the flip control can switch. */
-    var canFlip by mutableStateOf(false)
+    /**
+     * Flip control. Starts visible. Hidden only when a check made before any
+     * lens is open proves there is exactly one camera. hasCamera() often
+     * reports a single lens once preview is bound, so a later check must not
+     * clear a control that was already shown.
+     */
+    var showSwitch by mutableStateOf(true)
         private set
+    var canFlip by mutableStateOf(true)
+        private set
+    private var switchLatched = false
     private var knownFacings: Set<Int> = emptySet()
 
     init {
@@ -153,49 +161,87 @@ internal class CameraSession(
     }
 
     /**
-     * Front and back, from CameraX and from CameraManager. CameraX's hasCamera
-     * can miss the second lens on emulators even when the camera exists.
-     * More than one camera id still counts, so the flip control is hidden only
-     * on a phone with a single camera.
+     * Front and back, from [ProcessCameraProvider.hasCamera] and from
+     * CameraManager. More than one camera id still counts. Once two lenses
+     * have been seen, the flip control stays. A check made while a lens is
+     * already open cannot hide it: hasCamera drops the other lens then.
      */
     fun refreshCameras() {
-        val found = HashSet<Int>()
+        if (switchLatched) {
+            showSwitch = true
+            canFlip = true
+            return
+        }
         val current = provider
+        var front: Boolean? = null
+        var back: Boolean? = null
+        var infoCount = 0
         if (current != null) {
-            for (info in current.availableCameraInfos) {
+            val infos = current.availableCameraInfos
+            infoCount = infos.size
+            var sawFront = false
+            var sawBack = false
+            for (info in infos) {
                 when (readLens(info)) {
-                    CameraSelector.LENS_FACING_FRONT -> found.add(CameraSelector.LENS_FACING_FRONT)
-                    CameraSelector.LENS_FACING_BACK -> found.add(CameraSelector.LENS_FACING_BACK)
+                    CameraSelector.LENS_FACING_FRONT -> sawFront = true
+                    CameraSelector.LENS_FACING_BACK -> sawBack = true
                 }
             }
-            if (probe(current, CameraSelector.LENS_FACING_BACK)) found.add(CameraSelector.LENS_FACING_BACK)
-            if (probe(current, CameraSelector.LENS_FACING_FRONT)) found.add(CameraSelector.LENS_FACING_FRONT)
+            val probedFront = probeKnown(current, CameraSelector.LENS_FACING_FRONT)
+            val probedBack = probeKnown(current, CameraSelector.LENS_FACING_BACK)
+            front = when {
+                sawFront || probedFront == true -> true
+                probedFront == null -> null
+                else -> false
+            }
+            back = when {
+                sawBack || probedBack == true -> true
+                probedBack == null -> null
+                else -> false
+            }
         }
-        var hardwareCount = 0
+        var idCount = 0
         try {
             val manager = context.getSystemService(CameraManager::class.java)
-            val ids = manager?.cameraIdList ?: emptyArray()
-            hardwareCount = ids.size
-            for (id in ids) {
-                val facing = try {
-                    manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
-                } catch (_: Exception) {
-                    null
-                }
-                when (facing) {
-                    CameraCharacteristics.LENS_FACING_FRONT -> found.add(CameraSelector.LENS_FACING_FRONT)
-                    CameraCharacteristics.LENS_FACING_BACK -> found.add(CameraSelector.LENS_FACING_BACK)
+            val ids = manager?.cameraIdList
+            if (ids != null) {
+                idCount = ids.size
+                for (id in ids) {
+                    val facing = try {
+                        manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    when (facing) {
+                        CameraCharacteristics.LENS_FACING_FRONT -> front = true
+                        CameraCharacteristics.LENS_FACING_BACK -> back = true
+                    }
                 }
             }
         } catch (_: Exception) {
-            // No camera service. CameraX's list still applies.
+            // No camera service, or the camera is busy. Leave the previous answer.
         }
-        if (hardwareCount >= 2 && found.size < 2) {
-            found.add(CameraSelector.LENS_FACING_BACK)
-            found.add(CameraSelector.LENS_FACING_FRONT)
+        val many = (front == true && back == true) || infoCount > 1 || idCount > 1
+        if (many) {
+            switchLatched = true
+            knownFacings = setOf(
+                CameraSelector.LENS_FACING_BACK,
+                CameraSelector.LENS_FACING_FRONT,
+            )
+            showSwitch = true
+            canFlip = true
+            return
         }
-        knownFacings = found
-        canFlip = CameraSelector.LENS_FACING_BACK in found && CameraSelector.LENS_FACING_FRONT in found
+        val single = front != null && back != null && (front xor back) &&
+            infoCount <= 1 && idCount <= 1 && (infoCount == 1 || idCount == 1)
+        // A bound camera makes hasCamera() forget the other lens. Do not hide then.
+        if (single && camera == null && !ready) {
+            knownFacings = setOf(
+                if (front == true) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK,
+            )
+            showSwitch = false
+            canFlip = false
+        }
     }
 
     fun findInfo(facing: Int): CameraInfo? {
@@ -746,10 +792,15 @@ internal class CameraSession(
     }
 
     private fun probe(current: ProcessCameraProvider, facing: Int): Boolean {
+        return probeKnown(current, facing) == true
+    }
+
+    /** Null when hasCamera threw (info not ready, or the other lens is busy). */
+    private fun probeKnown(current: ProcessCameraProvider, facing: Int): Boolean? {
         return try {
             current.hasCamera(CameraSelector.Builder().requireLensFacing(facing).build())
         } catch (_: Exception) {
-            false
+            null
         }
     }
 

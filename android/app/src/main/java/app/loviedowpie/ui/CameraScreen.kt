@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -397,7 +398,9 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
         }
     }
 
-    val canFlip = session.canFlip
+    // showSwitch stays true once two cameras are seen. Reading it here subscribes
+    // the preview to that state, including after a late hasCamera() result.
+    val showSwitch = session.showSwitch
     LaunchedEffect(session.attached, session.ready) {
         if (session.attached) session.refreshCameras()
     }
@@ -440,6 +443,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        .zIndex(1f)
                         .pointerInput(previewView) {
                             previewGestures(onTap = { onTap.value(it) }, onZoom = { onZoom.value(it) })
                         },
@@ -460,7 +464,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                 CameraOverlay(
                     session = session,
                     videoMode = videoMode,
-                    canFlip = canFlip,
+                    showSwitch = showSwitch,
                     qualityLabel = qualityLabel,
                     elapsedMs = elapsed,
                     failed = vm.captureFailed,
@@ -499,7 +503,9 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
     if (askAudio) {
         AlertDialog(
             onDismissRequest = { askAudio = false },
+            modifier = Modifier.ldPopupFrame(),
             containerColor = LdColors.colors.menu,
+            tonalElevation = 0.dp,
             titleContentColor = LdColors.colors.ink,
             textContentColor = LdColors.colors.ink,
             title = { Text(stringResource(R.string.camera_audio_title)) },

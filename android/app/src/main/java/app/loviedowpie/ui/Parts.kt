@@ -15,18 +15,20 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.BorderStroke
@@ -41,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -261,29 +264,47 @@ internal fun ToggleRow(
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    val interaction = remember { MutableInteractionSource() }
+    val onChange = rememberUpdatedState(onCheckedChange)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .toggleable(
                 value = checked,
-                interactionSource = interaction,
-                indication = LocalIndication.current,
                 enabled = enabled,
                 role = Role.Switch,
-                onValueChange = onCheckedChange,
+                onValueChange = { onChange.value(it) },
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = LdColors.colors.ink)
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp, top = 8.dp, bottom = 8.dp)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = LdColors.colors.ink,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        onClick(label = title) {
+                            if (enabled) onChange.value(!checked)
+                            true
+                        }
+                    },
+            )
             Text(
                 help,
                 style = MaterialTheme.typography.bodySmall,
                 color = LdColors.colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+        // The row owns the toggle. A null callback keeps the thumb from eating the click.
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            enabled = enabled,
+            modifier = Modifier.clearAndSetSemantics { },
+        )
     }
 }
 

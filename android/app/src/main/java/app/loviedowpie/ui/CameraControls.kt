@@ -72,7 +72,7 @@ internal object CameraChrome {
 internal fun CameraOverlay(
     session: CameraSession,
     videoMode: Boolean,
-    canFlip: Boolean,
+    showSwitch: Boolean,
     qualityLabel: String?,
     elapsedMs: Long,
     failed: Boolean,
@@ -89,7 +89,7 @@ internal fun CameraOverlay(
     Box(
         Modifier
             .fillMaxSize()
-            .zIndex(2f)
+            .zIndex(6f)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         Row(
@@ -168,25 +168,16 @@ internal fun CameraOverlay(
             )
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val switchLabel = stringResource(R.string.camera_switch)
-                Box(
-                    Modifier
-                        .size(56.dp)
-                        .semantics(mergeDescendants = true) {
-                            if (canFlip) contentDescription = switchLabel
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Visible in photo and video. Disabled only while a recording is stopping.
-                    // Hidden when the phone has a single camera (canFlip is false).
-                    if (canFlip) {
-                        RoundIconButton(
-                            onClick = onFlip,
-                            enabled = !controlsLocked,
-                            description = switchLabel,
-                            icon = FlipIcon,
-                        )
-                    }
+                // Same slot in photo and video. Hidden only after a check proves one camera.
+                if (showSwitch) {
+                    RoundIconButton(
+                        onClick = onFlip,
+                        enabled = !controlsLocked,
+                        description = stringResource(R.string.camera_switch),
+                        icon = FlipIcon,
+                    )
+                } else {
+                    Spacer(Modifier.size(48.dp))
                 }
                 Spacer(Modifier.width(28.dp))
                 ShutterButton(
@@ -196,7 +187,7 @@ internal fun CameraOverlay(
                     onClick = onShutter,
                 )
                 Spacer(Modifier.width(28.dp))
-                Spacer(Modifier.size(56.dp))
+                Spacer(Modifier.size(48.dp))
             }
         }
     }
@@ -354,7 +345,8 @@ internal fun RoundIconButton(
             .size(48.dp)
             .clip(CircleShape)
             .background(CameraChrome.scrim)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = tint)
@@ -382,7 +374,9 @@ internal fun QualityDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.ldPopupFrame(),
         containerColor = LdColors.colors.menu,
+        tonalElevation = 0.dp,
         titleContentColor = LdColors.colors.ink,
         textContentColor = LdColors.colors.ink,
         title = { Text(stringResource(R.string.camera_quality)) },

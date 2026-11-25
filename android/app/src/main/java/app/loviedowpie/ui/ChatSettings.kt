@@ -25,7 +25,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -152,23 +151,13 @@ fun ChatSettings(onBack: () -> Unit) {
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(stringResource(R.string.chat_autosave), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.chat_autosave_help),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = autoSave,
-                    onCheckedChange = { Store.setChatAutoSaveMedia(context, it) },
-                )
-            }
+            ToggleRow(
+                title = stringResource(R.string.chat_autosave),
+                help = stringResource(R.string.chat_autosave_help),
+                checked = autoSave,
+                enabled = true,
+                onCheckedChange = { Store.setChatAutoSaveMedia(context, it) },
+            )
         }
     }
 }

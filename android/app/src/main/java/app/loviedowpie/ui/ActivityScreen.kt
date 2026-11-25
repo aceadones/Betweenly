@@ -31,7 +31,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -181,20 +180,13 @@ fun ActivityScreen() {
                     onClick = { erase = !erase },
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(stringResource(R.string.draw_paper), style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(R.string.draw_paper_help),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = whitePaper, onCheckedChange = { whitePaper = it })
-            }
+            ToggleRow(
+                title = stringResource(R.string.draw_paper),
+                help = stringResource(R.string.draw_paper_help),
+                checked = whitePaper,
+                enabled = true,
+                onCheckedChange = { whitePaper = it },
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { model.undo() }, enabled = model.canUndo && !busy) {
                     Text(stringResource(R.string.draw_undo))
