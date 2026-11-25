@@ -275,7 +275,7 @@ private fun MusicMedia() {
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
-                    listOf(LdColors.bubbleMine, Color(0xFF0E4C9C), LdColors.navy),
+                    listOf(LdColors.bubbleMine, LdColors.musicDeep, LdColors.navy),
                 ),
             ),
         contentAlignment = Alignment.Center,

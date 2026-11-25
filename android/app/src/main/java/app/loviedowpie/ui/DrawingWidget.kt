@@ -55,22 +55,47 @@ class DrawingWidget : AppWidgetProvider() {
         /** Pixel budget for the bitmap itself, so the RemoteViews parcel stays under 1.5 MB. */
         private const val MAX_BITMAP_BYTES = 1_000_000
 
+        /**
+         * Bitmaps handed to the launcher on the last [updateAll]. RemoteViews may share
+         * their pixels until the next update, so they are recycled only then.
+         */
+        private val held = ArrayList<Bitmap>(4)
+        private val gate = Any()
+
         fun updateAll(context: Context) {
-            try {
-                val app = context.applicationContext
-                val manager = AppWidgetManager.getInstance(app)
-                val ids = manager.getAppWidgetIds(ComponentName(app, DrawingWidget::class.java))
-                if (ids.isEmpty()) return
-                for (id in ids) {
-                    val options = try {
-                        manager.getAppWidgetOptions(id)
-                    } catch (_: Exception) {
-                        Bundle()
+            synchronized(gate) {
+                try {
+                    val app = context.applicationContext
+                    val manager = AppWidgetManager.getInstance(app)
+                    val ids = manager.getAppWidgetIds(ComponentName(app, DrawingWidget::class.java))
+                    if (ids.isEmpty()) {
+                        for (bitmap in held) if (!bitmap.isRecycled) bitmap.recycle()
+                        held.clear()
+                        return
                     }
-                    push(app, manager, id, options)
+                    val previous = held.toList()
+                    held.clear()
+                    try {
+                        for (id in ids) {
+                            val options = try {
+                                manager.getAppWidgetOptions(id)
+                            } catch (_: Exception) {
+                                Bundle()
+                            }
+                            push(app, manager, id, options)
+                        }
+                    } finally {
+                        if (held.isEmpty()) {
+                            held.addAll(previous)
+                        } else {
+                            for (bitmap in previous) {
+                                if (bitmap !in held && !bitmap.isRecycled) bitmap.recycle()
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // The launcher was busy. The next drawing, or the 30-minute tick, tries again.
                 }
-            } catch (_: Exception) {
-                // The launcher was busy. The next drawing, or the 30-minute tick, tries again.
             }
         }
 
@@ -85,6 +110,7 @@ class DrawingWidget : AppWidgetProvider() {
             } catch (_: OutOfMemoryError) {
                 null
             }
+            var handed = false
             try {
                 if (bitmap != null) {
                     views.setImageViewBitmap(R.id.widget_drawing, bitmap)
@@ -96,6 +122,8 @@ class DrawingWidget : AppWidgetProvider() {
                 }
                 views.setOnClickPendingIntent(R.id.widget_drawing_root, openActivity(context))
                 manager.updateAppWidget(id, views)
+                handed = bitmap != null
+                if (handed && bitmap != null) held.add(bitmap)
                 try {
                     manager.notifyAppWidgetViewDataChanged(id, R.id.widget_drawing)
                 } catch (_: Exception) {
@@ -104,7 +132,7 @@ class DrawingWidget : AppWidgetProvider() {
             } catch (_: Exception) {
                 // Binder limit or a busy launcher. Leave the previous frame in place.
             } finally {
-                if (bitmap != null && !bitmap.isRecycled) bitmap.recycle()
+                if (!handed && bitmap != null && !bitmap.isRecycled) bitmap.recycle()
             }
         }
 

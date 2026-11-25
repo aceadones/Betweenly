@@ -73,6 +73,15 @@ object LdColors {
     val black = Color(0xFF111318)
     val clear = Color.Transparent
     val paper = Color(0xFFFFFFFF)
+    /** Transparency checker. Same in light and dark so clear paper stays readable. */
+    val checkerLight = Color(0xFFF4F4F6)
+    val checkerDark = Color(0xFFD9D9DE)
+    /** Warm plate under a brush sample. */
+    val previewPlate = Color(0xFFF7F4EF)
+    /** Music card wash. Deeper than [primary] so it sits next to [bubbleMine]. */
+    val musicDeep = Color(0xFF0E4C9C)
+    val musicWashTop = Color(0xFFB9DCFF)
+    val musicWashBottom = Color(0xFF6EA8FF)
 
     /** Solid "mine" bubble. Deepened from [primary] so white text clears 4.5:1. */
     val bubbleMine = Color(0xFF185FC4)

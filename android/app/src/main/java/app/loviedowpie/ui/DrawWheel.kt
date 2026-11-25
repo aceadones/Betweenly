@@ -216,6 +216,7 @@ private fun HueRing(hue: Float, color: Color, onHue: (Float) -> Unit) {
 private fun SvSquare(hue: Float, sat: Float, value: Float, onChange: (Float, Float) -> Unit) {
     val hueStep = hue.toInt().coerceIn(0, 359)
     val bitmap = remember { Bitmap.createBitmap(SQUARE, SQUARE, Bitmap.Config.ARGB_8888) }
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
     val pixels = remember { IntArray(SQUARE * SQUARE) }
     val stamp = remember(hueStep) {
         fillSv(pixels, hueStep.toFloat())
@@ -253,9 +254,10 @@ private fun SvSquare(hue: Float, sat: Float, value: Float, onChange: (Float, Flo
                 }
             },
     ) {
-        if (stamp < 0) return@Canvas
+        if (stamp < 0 || bitmap.isRecycled) return@Canvas
+        image.prepareToDraw()
         drawImage(
-            image = bitmap.asImageBitmap(),
+            image = image,
             dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
         )
         val center = Offset(sat * size.width, (1f - value) * size.height)

@@ -80,8 +80,13 @@ object ChatStore {
 
     private const val PREFS = "app"
     private const val UNREAD = "chat_unread"
+    /** Partner unsends that arrived before the message. Cleared on wipe. */
+    private const val EARLY = "chat_unsend_early"
+    /** Newest rows kept in memory. Older rows stay in the database. */
+    private const val MAX_LIST = 500
     private val unreadLock = Any()
     private val unreadMut = MutableStateFlow(0)
+    private var earlyMem: MutableList<String>? = null
 
     /**
      * Messages received since the Chat tab was last open. Persisted in the
@@ -152,17 +157,29 @@ object ChatStore {
             return try {
                 val pending = HashMap<String, String>()
                 val out = ArrayList<ChatMessage>()
-                database.query(TABLE, null, null, null, null, null, "ts ASC, rowid ASC").use { cursor ->
+                database.query(TABLE, null, "id LIKE 'rx%'", null, null, null, "ts DESC", "80").use { cursor ->
                     while (cursor.moveToNext()) {
-                        val id = cursor.string("id") ?: continue
                         val blob = cursor.blob("body") ?: continue
                         val json = openBody(blob) ?: continue
-                        if (json.optString("t") == "react" || id.startsWith("rx")) {
-                            val target = normalizeId(json.optString("id")) ?: continue
-                            val emoji = json.optString("emoji")
-                            if (emoji.isNotEmpty()) pending[target] = emoji
-                            continue
-                        }
+                        val target = normalizeId(json.optString("id")) ?: continue
+                        val emoji = json.optString("emoji")
+                        if (emoji.isNotEmpty()) pending[target] = emoji
+                    }
+                }
+                database.query(
+                    TABLE,
+                    null,
+                    "id NOT LIKE 'rx%'",
+                    null,
+                    null,
+                    null,
+                    "ts DESC, rowid DESC",
+                    MAX_LIST.toString(),
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val blob = cursor.blob("body") ?: continue
+                        val json = openBody(blob) ?: continue
+                        if (json.optString("t") == "react") continue
                         val message = messageFrom(cursor, json) ?: continue
                         out.add(message)
                     }
@@ -273,6 +290,12 @@ object ChatStore {
         return edit(context) { tombstoneLocked(context, safe, onlyIncoming) } == true
     }
 
+    /** True when this id is already a delete-for-everyone tombstone. */
+    fun isGone(context: Context, id: String): Boolean {
+        val message = get(context, id) ?: return false
+        return message.json.optString("t") == "gone"
+    }
+
     /** Centered system line, encrypted like any other row. It is not a message from either person. */
     fun insertNote(context: Context, text: String): Boolean {
         val clean = text.trim().filter { it >= ' ' }.take(200)
@@ -311,6 +334,7 @@ object ChatStore {
                     }
                     unreadMut.value = 0
                 }
+                clearEarlyLocked(app)
                 bump()
                 true
             } catch (_: Exception) {
@@ -495,6 +519,7 @@ object ChatStore {
                 }
                 unreadMut.value = 0
             }
+            clearEarlyLocked(app)
             bump()
         }
         try {
@@ -531,6 +556,15 @@ object ChatStore {
     private fun insertIncomingLocked(context: Context, id: String, ts: Long, json: JSONObject): Boolean {
         val database = db(context) ?: return false
         if (exists(database, id)) return false
+        if (hasEarlyLocked(context, id)) {
+            val gone = JSONObject().put("t", "gone").put("id", id).put("ts", ts)
+            val goneBlob = seal(gone) ?: return false
+            if (!insertRow(database, id, ts, DIR_IN, RECEIVED, goneBlob)) return false
+            dropEarlyLocked(context, id)
+            bump()
+            // False so the caller does not notify or download the removed bytes.
+            return false
+        }
         val pendingId = "rx$id"
         if (exists(database, pendingId)) {
             val pending = readJson(database, pendingId)
@@ -546,6 +580,8 @@ object ChatStore {
 
     private fun setStatusLocked(context: Context, id: String, status: String): Boolean {
         val database = db(context) ?: return false
+        val current = readMessage(database, id) ?: return false
+        if (current.json.optString("t") == "gone") return false
         val values = ContentValues().apply { put("status", status) }
         if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
         bump()
@@ -555,6 +591,7 @@ object ChatStore {
     private fun updateJsonLocked(context: Context, id: String, json: JSONObject): Boolean {
         val database = db(context) ?: return false
         val current = readMessage(database, id) ?: return false
+        if (current.json.optString("t") == "gone") return false
         if (current.json.optInt("gal") == 1) json.put("gal", 1)
         if (json.optString("rx").isEmpty()) {
             val existing = current.json.optString("rx")
@@ -596,7 +633,12 @@ object ChatStore {
 
     private fun tombstoneLocked(context: Context, id: String, onlyIncoming: Boolean): Boolean {
         val database = db(context) ?: return false
-        val current = readMessage(database, id) ?: return false
+        val current = readMessage(database, id)
+        if (current == null) {
+            if (!onlyIncoming) return false
+            rememberEarlyLocked(context, id)
+            return true
+        }
         if (onlyIncoming && current.outgoing) return false
         if (!onlyIncoming && !current.outgoing) return false
         if (current.json.optString("t") != "gone") {
@@ -798,6 +840,52 @@ object ChatStore {
 
     private fun bump() {
         written.update { it + 1 }
+    }
+
+    /** Partner unsend for a message that has not arrived yet. */
+    private fun earlyLocked(context: Context): MutableList<String> {
+        earlyMem?.let { return it }
+        val raw = try {
+            appPrefs(context).getString(EARLY, "").orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        val list = raw.split(',').mapNotNull { normalizeId(it) }.distinct().toMutableList()
+        earlyMem = list
+        return list
+    }
+
+    private fun persistEarly(context: Context) {
+        val list = earlyMem ?: return
+        try {
+            appPrefs(context).edit().putString(EARLY, list.joinToString(",")).commit()
+        } catch (_: Exception) {
+            // The in-memory set still applies for this process.
+        }
+    }
+
+    private fun rememberEarlyLocked(context: Context, id: String) {
+        val list = earlyLocked(context)
+        if (id in list) return
+        list.add(id)
+        while (list.size > 64) list.removeAt(0)
+        persistEarly(context)
+    }
+
+    private fun hasEarlyLocked(context: Context, id: String): Boolean = id in earlyLocked(context)
+
+    private fun dropEarlyLocked(context: Context, id: String) {
+        val list = earlyLocked(context)
+        if (list.remove(id)) persistEarly(context)
+    }
+
+    private fun clearEarlyLocked(context: Context) {
+        earlyMem = mutableListOf()
+        try {
+            appPrefs(context).edit().remove(EARLY).commit()
+        } catch (_: Exception) {
+            // Memory is already empty.
+        }
     }
 
     private fun deleteQuiet(file: File) {

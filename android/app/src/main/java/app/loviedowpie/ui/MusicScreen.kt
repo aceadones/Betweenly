@@ -531,7 +531,7 @@ private fun Artwork(track: Track?, modifier: Modifier = Modifier) {
     val outer = 32.dp
     val inset = 8.dp
     val brush = if (track == null) {
-        Brush.linearGradient(listOf(Color(0xFFB9DCFF), Color(0xFF6EA8FF)))
+        Brush.linearGradient(listOf(LdColors.musicWashTop, LdColors.musicWashBottom))
     } else {
         artworkBrush(track.sourceId + ":" + track.id)
     }

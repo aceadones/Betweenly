@@ -40,6 +40,9 @@ object ChatController {
     @Volatile
     private var app: Context? = null
 
+    /** Ids this phone has unsent. An in-flight send of the original must not go out. */
+    private val suppressed = LinkedHashSet<String>()
+
     fun install(context: Context) {
         app = context.applicationContext
     }
@@ -162,6 +165,7 @@ object ChatController {
             try {
                 val message = ChatStore.get(context, id) ?: return@launch
                 if (!message.outgoing) return@launch
+                if (message.json.optString("t") == "gone" || skipSend(context, id)) return@launch
                 ChatStore.setStatus(context, id, ChatStore.SENDING)
                 val json = message.json
                 if (json.optString("t") == "att" && json.optString("fid").length != 32) {
@@ -181,18 +185,28 @@ object ChatController {
                     json.put("key", uploaded.second)
                     json.put("size", plain.size)
                 }
+                if (skipSend(context, id)) return@launch
                 if (!fit(json)) {
+                    if (skipSend(context, id)) return@launch
                     ChatStore.setStatus(context, id, ChatStore.FAILED)
                     note(R.string.chat_send_failed)
                     return@launch
                 }
-                ChatStore.updateJson(context, id, json)
+                if (!ChatStore.updateJson(context, id, json)) {
+                    if (skipSend(context, id)) return@launch
+                    ChatStore.setStatus(context, id, ChatStore.FAILED)
+                    note(R.string.chat_send_failed)
+                    return@launch
+                }
+                if (skipSend(context, id)) return@launch
                 val ok = transmit(context, json)
+                if (skipSend(context, id)) return@launch
                 ChatStore.setStatus(context, id, if (ok) ChatStore.SENT else ChatStore.FAILED)
                 if (!ok) note(R.string.chat_send_failed)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
+                if (skipSend(context, id)) return@launch
                 ChatStore.setStatus(context, id, ChatStore.FAILED)
                 note(R.string.chat_send_failed)
             }
@@ -241,14 +255,19 @@ object ChatController {
      */
     fun unsend(context: Context, id: String) {
         val safe = ChatStore.normalizeId(id) ?: return
+        blockSend(safe)
         install(context)
         AppScope.scope.launch {
             try {
-                val message = ChatStore.get(context, safe) ?: return@launch
-                if (!message.outgoing) return@launch
+                val message = ChatStore.get(context, safe)
+                if (message == null || !message.outgoing) {
+                    unblock(safe)
+                    return@launch
+                }
                 if (message.json.optString("t") == "gone") {
                     rememberUnsend(context, safe)
                 } else if (!ChatStore.tombstone(context, safe, onlyIncoming = false)) {
+                    unblock(safe)
                     return@launch
                 } else {
                     rememberUnsend(context, safe)
@@ -325,6 +344,7 @@ object ChatController {
             null
         }
         if (uploaded == null) {
+            if (skipSend(context, id)) return
             ChatStore.setStatus(context, id, ChatStore.FAILED)
             note(R.string.chat_send_failed)
             return
@@ -332,13 +352,22 @@ object ChatController {
         json.put("fid", uploaded.first)
         json.put("key", uploaded.second)
         json.put("size", prepared.bytes.size)
+        if (skipSend(context, id)) return
         if (!fit(json)) {
+            if (skipSend(context, id)) return
             ChatStore.setStatus(context, id, ChatStore.FAILED)
             note(R.string.chat_send_failed)
             return
         }
-        ChatStore.updateJson(context, id, json)
+        if (!ChatStore.updateJson(context, id, json)) {
+            if (skipSend(context, id)) return
+            ChatStore.setStatus(context, id, ChatStore.FAILED)
+            note(R.string.chat_send_failed)
+            return
+        }
+        if (skipSend(context, id)) return
         val ok = transmit(context, json)
+        if (skipSend(context, id)) return
         ChatStore.setStatus(context, id, if (ok) ChatStore.SENT else ChatStore.FAILED)
         if (!ok) note(R.string.chat_send_failed)
     }
@@ -354,7 +383,9 @@ object ChatController {
         }
         val message = ChatMessage(id, ts, outgoing = true, status = ChatStore.SENDING, json = json)
         if (!ChatStore.insert(context, message)) return
+        if (skipSend(context, id)) return
         val ok = transmit(context, json)
+        if (skipSend(context, id)) return
         ChatStore.setStatus(context, id, if (ok) ChatStore.SENT else ChatStore.FAILED)
         if (!ok) note(R.string.chat_send_failed)
     }
@@ -388,13 +419,22 @@ object ChatController {
                 json.put("img", Base64.encodeToString(card.jpeg, Base64.NO_WRAP))
             }
         }
+        if (skipSend(context, id)) return
         if (!fit(json)) {
+            if (skipSend(context, id)) return
             ChatStore.setStatus(context, id, ChatStore.FAILED)
             note(R.string.chat_send_failed)
             return
         }
-        ChatStore.updateJson(context, id, json)
+        if (!ChatStore.updateJson(context, id, json)) {
+            if (skipSend(context, id)) return
+            ChatStore.setStatus(context, id, ChatStore.FAILED)
+            note(R.string.chat_send_failed)
+            return
+        }
+        if (skipSend(context, id)) return
         val ok = transmit(context, json)
+        if (skipSend(context, id)) return
         ChatStore.setStatus(context, id, if (ok) ChatStore.SENT else ChatStore.FAILED)
         if (!ok) note(R.string.chat_send_failed)
     }
@@ -475,8 +515,32 @@ object ChatController {
         return copy
     }
 
+    private fun blockSend(id: String) {
+        synchronized(suppressed) {
+            suppressed.add(id)
+            while (suppressed.size > 80) {
+                val first = suppressed.iterator().next()
+                suppressed.remove(first)
+            }
+        }
+    }
+
+    private fun unblock(id: String) {
+        synchronized(suppressed) { suppressed.remove(id) }
+    }
+
+    private fun blocked(id: String): Boolean = synchronized(suppressed) { id in suppressed }
+
+    /** True when the original must not be sent or marked failed. Unsend already owns the row. */
+    private fun skipSend(context: Context, id: String): Boolean =
+        blocked(id) || ChatStore.isGone(context, id)
+
     private suspend fun transmit(context: Context, json: JSONObject, wake: Boolean = true): Boolean {
         val sending = wireCopy(json)
+        if (sending.optString("t") != "unsend") {
+            val id = ChatStore.normalizeId(sending.optString("id"))
+            if (id != null && blocked(id)) return true
+        }
         if (Msg.pad(sending) == null) return false
         return try {
             if (sending.optString("t") == "unsend") {

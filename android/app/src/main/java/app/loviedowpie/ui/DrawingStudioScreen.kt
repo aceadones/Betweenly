@@ -670,12 +670,12 @@ private fun MiniChecker() {
             .clip(RoundedCornerShape(4.dp)),
     ) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxSize().background(Color(0xFFF4F4F6)))
-            Box(Modifier.weight(1f).fillMaxSize().background(Color(0xFFD9D9DE)))
+            Box(Modifier.weight(1f).fillMaxSize().background(LdColors.checkerLight))
+            Box(Modifier.weight(1f).fillMaxSize().background(LdColors.checkerDark))
         }
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            Box(Modifier.weight(1f).fillMaxSize().background(Color(0xFFD9D9DE)))
-            Box(Modifier.weight(1f).fillMaxSize().background(Color(0xFFF4F4F6)))
+            Box(Modifier.weight(1f).fillMaxSize().background(LdColors.checkerDark))
+            Box(Modifier.weight(1f).fillMaxSize().background(LdColors.checkerLight))
         }
     }
 }

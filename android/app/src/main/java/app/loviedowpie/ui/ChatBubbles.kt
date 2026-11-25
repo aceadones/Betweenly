@@ -163,7 +163,7 @@ fun ChatSystemNote(text: String) {
 fun replySnippet(message: ChatMessage): String {
     val type = message.json.optString("t")
     if (type == "gone") {
-        return stringResource(if (message.outgoing) R.string.chat_deleted_you else R.string.chat_deleted_them)
+        return stringResource(R.string.chat_deleted_them)
     }
     if (type == "note") return message.json.optString("text").ifBlank { stringResource(R.string.chat_reply_gone) }
     val text = message.json.optString("text").trim()
@@ -275,7 +275,7 @@ fun ChatBubble(
                                 QuoteLine(
                                     quote,
                                     message.outgoing,
-                                    Modifier.padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 2.dp),
+                                    Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
                                 )
                             }
                             Box(Modifier.padding(4.dp)) {
@@ -292,11 +292,11 @@ fun ChatBubble(
                             if (caption.isNotBlank()) {
                                 Text(
                                     caption,
-                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    modifier = Modifier.padding(horizontal = 16.dp),
                                     color = ChatTheme.ink(message.outgoing),
                                 )
                             }
-                            Meta(message, Modifier.padding(start = 14.dp, end = 14.dp, bottom = 9.dp))
+                            Meta(message, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
                         }
                     } else {
                         Column(
@@ -305,7 +305,7 @@ fun ChatBubble(
                                     onClick = {},
                                     onLongClick = { onLongPress(rowHolder[0], bubbleHolder[0]) },
                                 )
-                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                         ) {
                             if (!quote.isNullOrBlank()) QuoteLine(quote, message.outgoing, Modifier)
                             when (type) {
@@ -334,7 +334,7 @@ fun ChatBubble(
 
 @Composable
 private fun Tombstone(message: ChatMessage, holder: Array<Rect>, onLongPress: () -> Unit) {
-    val label = stringResource(if (message.outgoing) R.string.chat_deleted_you else R.string.chat_deleted_them)
+    val label = stringResource(R.string.chat_deleted_them)
     Surface(
         shape = ChatTheme.bubble,
         color = LdColors.colors.glassStrong,
@@ -345,7 +345,7 @@ private fun Tombstone(message: ChatMessage, holder: Array<Rect>, onLongPress: ()
             .onGloballyPositioned { holder[0] = it.boundsInRoot() }
             .combinedClickable(onClick = {}, onLongClick = onLongPress),
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(
                 label,
                 style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
@@ -868,6 +868,7 @@ private fun Modifier.swipeReply(
 ): Modifier {
     return pointerInput(onReply) {
         val threshold = 72.dp.toPx()
+        val maxShift = 96.dp.toPx()
         val pointer = this
         coroutineScope {
             val scope = this
@@ -877,13 +878,29 @@ private fun Modifier.swipeReply(
                 settle?.cancel()
                 track?.cancel()
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val slop = viewConfiguration.touchSlop
                 var total = shift.value
+                var dx = 0f
+                var dy = 0f
+                var horizontal = false
                 var fired = false
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     if (!change.pressed) break
-                    total = (total + change.position.x - change.previousPosition.x).coerceIn(-140f, 140f)
+                    val mx = change.position.x - change.previousPosition.x
+                    val my = change.position.y - change.previousPosition.y
+                    if (!horizontal) {
+                        dx += mx
+                        dy += my
+                        if (abs(dx) < slop && abs(dy) < slop) continue
+                        // A vertical move belongs to the message list.
+                        if (abs(dy) > abs(dx)) break
+                        horizontal = true
+                        total = (shift.value + dx).coerceIn(-maxShift, maxShift)
+                    } else {
+                        total = (total + mx).coerceIn(-maxShift, maxShift)
+                    }
                     val sample = total
                     // awaitEachGesture cannot call snapTo; the outer scope can.
                     track?.cancel()

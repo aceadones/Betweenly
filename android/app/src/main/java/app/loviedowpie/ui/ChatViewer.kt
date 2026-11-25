@@ -128,6 +128,17 @@ fun ChatMediaViewer(
         zoomed = false
         thumbs.scrollToItem(page)
     }
+    LaunchedEffect(items.size) {
+        if (items.isNotEmpty() && pager.currentPage > items.lastIndex) {
+            try {
+                pager.scrollToPage(items.lastIndex)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The pager rejects a page that is already gone. The next frame uses the last image.
+            }
+        }
+    }
 
     fun close() {
         if (closing) return
@@ -200,31 +211,34 @@ fun ChatMediaViewer(
                 state = pager,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 userScrollEnabled = !zoomed && drag < 8f,
-                key = { items[it].id },
+                key = { index -> items.getOrNull(index)?.id ?: index },
             ) { index ->
-                ViewerPage(
-                    message = items[index],
-                    active = index == page,
-                    onZoomed = { if (index == page) zoomed = it },
-                    onPlay = { onPlay(items[index]) },
-                    onPull = { dy ->
-                        scope.launch { dragY.snapTo((dragY.value + dy).coerceAtLeast(0f)) }
-                    },
-                    onPullEnd = {
-                        scope.launch {
-                            val threshold = with(density) { 140.dp.toPx() }
-                            if (dragY.value > threshold) {
-                                dragY.animateTo(size.height.toFloat().coerceAtLeast(1f), Motion.tween(180, Motion.easeOut))
-                                onClose()
-                            } else {
-                                dragY.animateTo(0f, Motion.spring())
+                val item = items.getOrNull(index)
+                if (item != null) {
+                    ViewerPage(
+                        message = item,
+                        active = index == page,
+                        onZoomed = { if (index == page) zoomed = it },
+                        onPlay = { onPlay(item) },
+                        onPull = { dy ->
+                            scope.launch { dragY.snapTo((dragY.value + dy).coerceAtLeast(0f)) }
+                        },
+                        onPullEnd = {
+                            scope.launch {
+                                val threshold = with(density) { 140.dp.toPx() }
+                                if (dragY.value > threshold) {
+                                    dragY.animateTo(size.height.toFloat().coerceAtLeast(1f), Motion.tween(180, Motion.easeOut))
+                                    onClose()
+                                } else {
+                                    dragY.animateTo(0f, Motion.spring())
+                                }
                             }
-                        }
-                    },
-                    onPullCancel = {
-                        scope.launch { dragY.animateTo(0f, Motion.spring()) }
-                    },
-                )
+                        },
+                        onPullCancel = {
+                            scope.launch { dragY.animateTo(0f, Motion.spring()) }
+                        },
+                    )
+                }
             }
             LazyRow(
                 state = thumbs,

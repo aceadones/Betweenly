@@ -117,7 +117,7 @@ private fun BrushCell(
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(plate)
-                .background(Color(0xFFF7F4EF)),
+                .background(LdColors.previewPlate),
             contentAlignment = Alignment.Center,
         ) {
             if (!bmp.isRecycled) {
@@ -313,8 +313,8 @@ private fun PreviewDot(diameter: androidx.compose.ui.unit.Dp, color: Color, alph
 @Composable
 private fun Checker() {
     Row(Modifier.fillMaxWidth().height(72.dp)) {
-        Box(Modifier.weight(1f).height(72.dp).background(Color(0xFFF4F4F6)))
-        Box(Modifier.weight(1f).height(72.dp).background(Color(0xFFD9D9DE)))
+        Box(Modifier.weight(1f).height(72.dp).background(LdColors.checkerLight))
+        Box(Modifier.weight(1f).height(72.dp).background(LdColors.checkerDark))
     }
 }
 

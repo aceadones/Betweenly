@@ -106,8 +106,8 @@ internal fun StudioPaper(
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChecker(cell: Float) {
-    val dark = Color(0xFFD9D9DE)
-    val light = Color(0xFFF4F4F6)
+    val dark = LdColors.checkerDark
+    val light = LdColors.checkerLight
     val step = cell.coerceAtLeast(4f)
     var y = 0f
     var row = 0
