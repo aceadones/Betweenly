@@ -6,12 +6,13 @@ import org.json.JSONObject
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Applies chat, attachment, link, and reaction messages after [Inbox] has
- * decrypted them. Downloads run on [AppScope] so the session lock is not held
- * while a file comes down.
+ * Applies chat, attachment, link, reaction, unsend, and wallpaper messages
+ * after [Inbox] has decrypted them. Downloads run on [AppScope] so the session
+ * lock is not held while a file comes down.
  *
- * DATA-FLOW: no network of its own. The attachment bytes are fetched later by
- * [FileTransfer], still ciphertext until they reach this phone.
+ * DATA-FLOW: no network of its own. Attachment and wallpaper bytes are fetched
+ * later by [FileTransfer], still ciphertext until they reach this phone.
+ * Unsend is only the message id.
  */
 object ChatInbound {
     fun handle(context: Context, json: JSONObject) {
@@ -21,6 +22,8 @@ object ChatInbound {
                     val emoji = json.optString("emoji")
                     if (emoji.isNotEmpty()) ChatStore.setReaction(context, json.optString("id"), emoji)
                 }
+                "unsend" -> ChatStore.tombstone(context, json.optString("id"), onlyIncoming = true)
+                "wall" -> ChatWallpaperSync.onIncoming(context, json)
                 "chat", "att", "link" -> {
                     if (!ChatStore.insertIncoming(context, json)) return
                     if (json.optString("t") == "att") {

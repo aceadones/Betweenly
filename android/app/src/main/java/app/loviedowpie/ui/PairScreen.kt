@@ -88,10 +88,10 @@ fun PairScreen(onPaired: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.pair_title), style = MaterialTheme.typography.headlineLarge)
+            Text(stringResource(R.string.pair_title), style = LdType.Display, color = LdColors.colors.ink)
             when {
                 ui.phase == PairPhase.WaitingShow || ui.phase == PairPhase.WaitingJoin -> Waiting(
                     code = ui.shownCode,

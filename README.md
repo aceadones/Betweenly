@@ -4,7 +4,9 @@ A private two-person app for long-distance couples. Android only (sideloaded APK
 
 **V1:** pair with an 8-character code, share location (every ~10 min, or Live), battery %, ring your partner's phone, 2×2 home-screen widget, in-app update check.
 
-**V2:** four tabs (Activity, Chat, Location, Profile). Chat is text, emoji, photos, video, GIFs, stickers, files, link previews, six emoji reactions, and reply. Activity is a drawing canvas with a resizable home-screen widget. Profile holds the name, photo, saved drawings, notification switches, the safety number, and unpair. The camera stays on the phone until a picture or video is sent.
+**V2:** four tabs (Activity, Chat, Location, Profile). Chat is text, emoji, photos, video, GIFs, stickers, files, link previews, seven reaction shortcuts you can change, reply, unsend, and a shared wallpaper. Activity opens a drawing studio (brushes, eraser, color, size, and opacity) and Hear together. A resizable home-screen widget shows the latest drawing. Profile holds the name, photo, saved drawings, notification switches, a Reduce animations switch, the safety number, and unpair. The camera stays on the phone until a picture or video is sent. Hear together plays songs already on this phone, and can invite the partner only while that screen is open.
+
+Icons are the Lucide-style set in `android/app/src/main/java/app/loviedowpie/ui/icons/Lu.kt` (ISC, see `THIRD-PARTY.md`). The app does not depend on Material Icons. Motion lives in `ui/Motion.kt`; Profile has a "Reduce animations" switch that makes those helpers snap. Corner radii follow `ui/Radius.kt`: a nested rounded shape is the outer radius minus the gap. The dock is four tabs (Activity, Chat, Location, Profile). The camera opens from the chat attach menu, not from the dock.
 
 ## Privacy in one paragraph
 
@@ -47,7 +49,7 @@ cd core && cargo build --example partner
 ./target/debug/examples/partner https://your-relay.example <CODE>
 ```
 
-After `PAIRED` it reads `chat`, `ring`, `share on|off`, `loc <lat> <lon> <bat>`, `draw <file.png>`, `photo <file>`, `sticker <file.png>`, `gif <file.gif>`, `file <path>`, and `quit`. It prints each decrypted message and saves received files under `/tmp/partner-in/`.
+After `PAIRED` it reads `chat`, `ring`, `share on|off`, `loc <lat> <lon> <bat>`, `draw <file.png>`, `photo <file>`, `sticker <file.png>`, `gif <file.gif>`, `file <path>`, `unsend <id>`, `wall color <0-5>`, `react <id> <emoji>`, and `quit`. It prints each decrypted message and saves received files under `/tmp/partner-in/`. It does not play audio or join Hear together.
 
 ## Release
 

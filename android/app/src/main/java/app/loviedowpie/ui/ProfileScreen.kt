@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -102,6 +103,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     val drawings = remember(drawRev) { DrawStore.list(context) }
     val notifyMessages = remember(revision) { Store.notifyMessages(context) }
     val notifyDrawings = remember(revision) { Store.notifyDrawings(context) }
+    val animationsOn by Store.animationsFlow(context).collectAsState()
 
     fun sendProfile() {
         scope.launch {
@@ -123,6 +125,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
         AlertDialog(
             onDismissRequest = { confirm = false },
             modifier = Modifier.ldPopupFrame(),
+            shape = MaterialTheme.shapes.extraLarge,
             containerColor = LdColors.colors.menu,
             tonalElevation = 0.dp,
             titleContentColor = LdColors.colors.ink,
@@ -180,13 +183,13 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(stringResource(R.string.profile_title), style = MaterialTheme.typography.headlineLarge)
+                Column(Modifier.appear(0), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.profile_title), style = LdType.Display, color = LdColors.colors.ink)
                     MyPhoto(name.ifBlank { stringResource(R.string.partner_fallback) }) { jpeg ->
                         val clean = name.trim()
                         if (clean.isNotEmpty()) Store.setMyName(context, clean)
@@ -214,7 +217,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                         enabled = name.trim().isNotEmpty(),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(stringResource(R.string.draw_saved_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.draw_saved_title), style = LdType.Title, color = LdColors.colors.ink)
                     if (drawings.isEmpty()) {
                         Text(
                             stringResource(R.string.draw_none_saved),
@@ -224,26 +227,43 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                     }
                 }
             }
-            items(drawings, key = { it.ts }) { drawing ->
-                SavedThumb(drawing) { viewingTs = drawing.ts }
+            itemsIndexed(drawings, key = { _, drawing -> drawing.ts }) { index, drawing ->
+                SavedThumb(
+                    drawing,
+                    modifier = if (index < 8) Modifier.appear(index) else Modifier,
+                ) { viewingTs = drawing.ts }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(stringResource(R.string.notif_section), style = MaterialTheme.typography.titleMedium)
-                    ToggleRow(
-                        title = stringResource(R.string.notif_messages),
-                        help = stringResource(R.string.notif_messages_help),
-                        checked = notifyMessages,
-                        enabled = true,
-                        onCheckedChange = { Store.setNotifyMessages(context, it) },
-                    )
-                    ToggleRow(
-                        title = stringResource(R.string.notif_drawings),
-                        help = stringResource(R.string.notif_drawings_help),
-                        checked = notifyDrawings,
-                        enabled = true,
-                        onCheckedChange = { Store.setNotifyDrawings(context, it) },
-                    )
+                Column(Modifier.appear(1), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(stringResource(R.string.notif_section), style = LdType.Title, color = LdColors.colors.ink)
+                    Box(Modifier.appear(0)) {
+                        ToggleRow(
+                            title = stringResource(R.string.notif_messages),
+                            help = stringResource(R.string.notif_messages_help),
+                            checked = notifyMessages,
+                            enabled = true,
+                            onCheckedChange = { Store.setNotifyMessages(context, it) },
+                        )
+                    }
+                    Box(Modifier.appear(1)) {
+                        ToggleRow(
+                            title = stringResource(R.string.notif_drawings),
+                            help = stringResource(R.string.notif_drawings_help),
+                            checked = notifyDrawings,
+                            enabled = true,
+                            onCheckedChange = { Store.setNotifyDrawings(context, it) },
+                        )
+                    }
+                    Text(stringResource(R.string.appearance_section), style = LdType.Title, color = LdColors.colors.ink)
+                    Box(Modifier.appear(2)) {
+                        ToggleRow(
+                            title = stringResource(R.string.reduce_animations),
+                            help = stringResource(R.string.reduce_animations_help),
+                            checked = !animationsOn,
+                            enabled = true,
+                            onCheckedChange = { reduce -> Store.setAnimationsEnabled(context, !reduce) },
+                        )
+                    }
                     SecondaryPill(
                         text = stringResource(R.string.notif_system),
                         onClick = {
@@ -388,15 +408,15 @@ private fun MyPhoto(name: String, onPicked: (ByteArray) -> Unit) {
 }
 
 @Composable
-private fun SavedThumb(drawing: SavedDrawing, onClick: () -> Unit) {
+private fun SavedThumb(drawing: SavedDrawing, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(drawing.ts) {
         bitmap = withContext(Dispatchers.IO) { DrawStore.decode(drawing.file, 360) }
     }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
-            .clip(MaterialTheme.shapes.medium)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(LdRadius.tile))
             .clickable(onClick = onClick),
     ) {
         val shown = bitmap
@@ -448,6 +468,7 @@ private fun DrawingViewer(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
+        PopupScale(visible = true, origin = TransformOrigin.Center) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = LdColors.colors.menu,
@@ -534,6 +555,7 @@ private fun DrawingViewer(
                     )
                 }
             }
+        }
         }
     }
 }

@@ -1,11 +1,14 @@
 package app.loviedowpie.ui
 
 import android.os.SystemClock
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -78,9 +81,14 @@ fun UpdateBanner(info: UpdateInfo, modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            val downloadPress = remember { MutableInteractionSource() }
+            val installPress = remember { MutableInteractionSource() }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     enabled = !downloading,
+                    shape = RoundedCornerShape(LdRadius.chip),
+                    interactionSource = downloadPress,
+                    modifier = Modifier.heightIn(min = 48.dp).pressScale(downloadPress),
                     onClick = {
                         if (downloading) return@Button
                         downloading = true
@@ -118,6 +126,9 @@ fun UpdateBanner(info: UpdateInfo, modifier: Modifier = Modifier) {
                 }
                 OutlinedButton(
                     enabled = apk != null && !downloading,
+                    shape = RoundedCornerShape(LdRadius.chip),
+                    interactionSource = installPress,
+                    modifier = Modifier.heightIn(min = 48.dp).pressScale(installPress),
                     onClick = {
                         val file = apk ?: return@OutlinedButton
                         val opened = Updater.install(context, file)

@@ -26,9 +26,10 @@ import kotlin.coroutines.cancellation.CancellationException
  * is the one [ChatScreen] installed before the camera opened. The overload that
  * takes a [Context] works even if the chat screen is not up.
  *
- * DATA-FLOW: text, link cards, reactions, and attachment pointers (file id + key)
- * leave through [Outbox.send]. File bytes leave through [FileTransfer]. Link
- * pages are fetched only on this phone; see [LinkPreview].
+ * DATA-FLOW: text, link cards, reactions, unsends, and attachment pointers
+ * (file id + key) leave through [Outbox.send]. File bytes leave through
+ * [FileTransfer]. Link pages are fetched only on this phone; see [LinkPreview].
+ * Shared wallpaper is sent by [ChatWallpaperSync], not here.
  */
 object ChatController {
     private val notesMut = MutableSharedFlow<Int>(extraBufferCapacity = 8)
@@ -212,16 +213,74 @@ object ChatController {
 
     fun react(context: Context, id: String, emoji: String) {
         val clean = emoji.trim().filter { it >= ' ' }.take(16)
-        if (clean.isEmpty() || ChatStore.normalizeId(id) == null) return
+        val safe = ChatStore.normalizeId(id) ?: return
+        if (clean.isEmpty()) return
+        install(context)
         AppScope.scope.launch {
             try {
-                ChatStore.setReaction(context, id, clean)
-                val json = JSONObject().put("t", "react").put("id", id).put("emoji", clean)
+                val message = ChatStore.get(context, safe) ?: return@launch
+                val type = message.json.optString("t")
+                if (type == "gone" || type == "note") return@launch
+                val mine = message.json.optString("mx")
+                val next = if (mine == clean) "" else clean
+                if (!ChatStore.setMyReaction(context, safe, next)) return@launch
+                val json = JSONObject().put("t", "react").put("id", safe).put("emoji", clean)
                 if (!transmit(context, json)) note(R.string.chat_send_failed)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 note(R.string.chat_send_failed)
+            }
+        }
+    }
+
+    /**
+     * Delete-for-everyone of this phone's own message. The row becomes a
+     * tombstone immediately. A failed send is remembered and tried again
+     * from [flushUnsends].
+     */
+    fun unsend(context: Context, id: String) {
+        val safe = ChatStore.normalizeId(id) ?: return
+        install(context)
+        AppScope.scope.launch {
+            try {
+                val message = ChatStore.get(context, safe) ?: return@launch
+                if (!message.outgoing) return@launch
+                if (message.json.optString("t") == "gone") {
+                    rememberUnsend(context, safe)
+                } else if (!ChatStore.tombstone(context, safe, onlyIncoming = false)) {
+                    return@launch
+                } else {
+                    rememberUnsend(context, safe)
+                }
+                val json = JSONObject().put("t", "unsend").put("id", safe)
+                if (transmit(context, json, wake = false)) {
+                    forgetUnsend(context, safe)
+                } else {
+                    note(R.string.chat_unsend_failed)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                note(R.string.chat_unsend_failed)
+            }
+        }
+    }
+
+    /** Sends unsends that did not leave the phone last time. Quiet on failure. */
+    fun flushUnsends(context: Context) {
+        install(context)
+        AppScope.scope.launch {
+            val ids = synchronized(unsendLock) { readUnsends(context) }
+            for (id in ids) {
+                try {
+                    val json = JSONObject().put("t", "unsend").put("id", id)
+                    if (transmit(context, json, wake = false)) forgetUnsend(context, id)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // The next time Chat opens, this id is tried again.
+                }
             }
         }
     }
@@ -411,20 +470,62 @@ object ChatController {
     private fun wireCopy(json: JSONObject): JSONObject {
         val copy = JSONObject(json.toString())
         copy.remove("rx")
+        copy.remove("mx")
         copy.remove("gal")
         return copy
     }
 
-    private suspend fun transmit(context: Context, json: JSONObject): Boolean {
+    private suspend fun transmit(context: Context, json: JSONObject, wake: Boolean = true): Boolean {
         val sending = wireCopy(json)
         if (Msg.pad(sending) == null) return false
         return try {
-            // DATA-FLOW: chat text, a link card, a reaction, or an attachment pointer (fid + key, not the file bytes), padded and sealed, posted to my relay outbox. wake=1 asks for an empty FCM ping. The relay stores ciphertext only.
-            Outbox.send(context, sending, wake = true)
+            if (sending.optString("t") == "unsend") {
+                // DATA-FLOW: unsend (the id of one of my messages, no text), padded and sealed, posted to my relay outbox. wake is off, so no FCM ping. The relay stores ciphertext only.
+                Outbox.send(context, sending, wake = false)
+            } else {
+                // DATA-FLOW: chat text, a link card, a reaction, or an attachment pointer (fid + key, not the file bytes), padded and sealed, posted to my relay outbox. wake=1 asks for an empty FCM ping. The relay stores ciphertext only.
+                Outbox.send(context, sending, wake = wake)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             false
         }
     }
+
+    private fun rememberUnsend(context: Context, id: String) = synchronized(unsendLock) {
+        val next = readUnsends(context).toMutableList()
+        if (id !in next) next.add(id)
+        writeUnsends(context, next)
+    }
+
+    private fun forgetUnsend(context: Context, id: String) = synchronized(unsendLock) {
+        writeUnsends(context, readUnsends(context).filter { it != id })
+    }
+
+    private fun readUnsends(context: Context): List<String> {
+        val raw = try {
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(UNSEND, "")
+                .orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        return raw.split(',').mapNotNull { ChatStore.normalizeId(it) }
+    }
+
+    private fun writeUnsends(context: Context, ids: List<String>) {
+        try {
+            context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(UNSEND, ids.distinct().take(40).joinToString(","))
+                .commit()
+        } catch (_: Exception) {
+            // The tombstone is already on this phone. The next flush tries again if the write stuck.
+        }
+    }
+
+    private const val PREFS = "app"
+    private const val UNSEND = "chat_unsend_pending"
+    private val unsendLock = Any()
 }

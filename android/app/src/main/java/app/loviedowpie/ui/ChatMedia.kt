@@ -109,6 +109,37 @@ object ChatMedia {
         }
     }
 
+    /**
+     * Shared wallpaper: upright JPEG, at most 1080 px wide, quality 80.
+     * DATA-FLOW: reads a local image only. Nothing is uploaded here.
+     */
+    fun shareWallpaperJpeg(context: Context, uri: Uri): ByteArray? {
+        var bitmap: Bitmap? = null
+        var scaled: Bitmap? = null
+        return try {
+            val decoded = decodeUri(context, uri, 1920) ?: return null
+            bitmap = decoded
+            val fitted = scaleToWidth(decoded, 1080)
+            scaled = fitted
+            var quality = 80
+            var bytes = compressJpeg(fitted, quality)
+            while (bytes != null && bytes.size > 2_500_000 && quality > 50) {
+                quality -= 10
+                bytes = compressJpeg(fitted, quality)
+            }
+            bytes?.takeIf { it.isNotEmpty() && it.size <= 3_000_000 }
+        } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
+            null
+        } finally {
+            val fitted = scaled
+            val decoded = bitmap
+            if (fitted != null && fitted !== decoded && !fitted.isRecycled) fitted.recycle()
+            if (decoded != null && !decoded.isRecycled) decoded.recycle()
+        }
+    }
+
     /** Wallpaper copy: upright JPEG, longest side at most 1440, no blur. */
     fun wallpaperJpeg(context: Context, uri: Uri): ByteArray? {
         val encoded = transcodeUri(context, uri, 1440, JPEG_QUALITY) ?: return null
@@ -475,6 +506,12 @@ object ChatMedia {
         } finally {
             if (!bitmap.isRecycled) bitmap.recycle()
         }
+    }
+
+    private fun scaleToWidth(src: Bitmap, maxWidth: Int): Bitmap {
+        if (src.width <= maxWidth || src.width <= 0) return src
+        val h = (src.height * (maxWidth.toFloat() / src.width.toFloat())).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(src, maxWidth, h, true)
     }
 
     private fun scaleDown(src: Bitmap, maxEdge: Int): Bitmap {

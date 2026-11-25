@@ -1,415 +1,289 @@
 package app.loviedowpie.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import app.loviedowpie.DrawSend
 import app.loviedowpie.DrawStore
 import app.loviedowpie.R
 import app.loviedowpie.Store
+import app.loviedowpie.ui.icons.Lu
+import app.loviedowpie.ui.icons.LuIcon
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Activity tab: a drawing canvas, the partner's latest drawing, and send/save.
- * The shell already applied the status-bar and navigation insets.
+ * Activity is a hub. The cards open Drawing and Music. They do not draw by themselves.
  *
- * DATA-FLOW: sending calls [DrawSend]. Saving stays on this phone ([DrawStore]).
+ * DATA-FLOW: none. A tap only changes the screen.
  */
 @Composable
-fun ActivityScreen() {
+fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenMusic: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
-    val model: DrawingViewModel = viewModel(key = "draw-${Store.generation()}")
-    var colorArgb by rememberSaveable { mutableIntStateOf(DrawInk.swatches.last().toArgb()) }
-    var brushIndex by rememberSaveable { mutableIntStateOf(1) }
-    var erase by rememberSaveable { mutableStateOf(false) }
-    var whitePaper by rememberSaveable { mutableStateOf(true) }
-    var wheel by rememberSaveable { mutableStateOf(false) }
-    var canvasPx by remember { mutableStateOf(IntSize.Zero) }
-    var busy by remember { mutableStateOf(false) }
-    val widthDp = DrawInk.brushSizesDp[brushIndex.coerceIn(0, DrawInk.brushSizesDp.lastIndex)]
-    val empty = model.strokes.isEmpty()
-
-    if (wheel) {
-        DrawColorDialog(
-            initialArgb = colorArgb,
-            onChange = { next ->
-                colorArgb = next
-                erase = false
-            },
-            onDismiss = { wheel = false },
-        )
+    val view = LocalView.current
+    val storeRev by Store.changes.collectAsState()
+    val drawRev by DrawStore.changes.collectAsState()
+    val partnerFile = remember(drawRev, storeRev) { DrawStore.latestFromPartner(context) }
+    val name = remember(storeRev) { Store.partnerName(context).trim() }
+    val slot = remember { arrayOfNulls<Bitmap>(1) }
+    var thumb by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(drawRev, storeRev) {
+        val file = DrawStore.latestFromPartner(context)
+        val decoded = if (file == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                val bmp = try {
+                    DrawStore.decode(file, 900)
+                } catch (_: Exception) {
+                    null
+                }
+                if (!isActive && bmp != null) {
+                    if (!bmp.isRecycled) bmp.recycle()
+                    null
+                } else {
+                    bmp
+                }
+            }
+        }
+        val previous = slot[0]
+        slot[0] = decoded
+        thumb = decoded
+        if (previous != null && previous !== decoded) recycleLater(view, previous)
     }
-
+    DisposableEffect(Unit) {
+        onDispose { slot[0]?.let { recycleLater(view, it) } }
+    }
+    val drawSubtitle = when {
+        partnerFile != null && name.isNotEmpty() -> stringResource(R.string.draw_from, name)
+        partnerFile != null -> stringResource(R.string.draw_partner)
+        else -> stringResource(R.string.activity_draw_help)
+    }
+    val cards = HubCard.entries
     Scaffold(
-        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-        snackbarHost = { SnackbarHost(snackbar) },
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
     ) { padding ->
-        BoxWithConstraints(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-        val short = maxHeight < 560.dp
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .then(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier.fillMaxSize()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            PartnerDrawingCard()
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (short) Modifier.height(280.dp) else Modifier.weight(1f))
-                    .onSizeChanged { canvasPx = it },
-            ) {
-                DrawCanvas(
-                    model = model,
-                    colorArgb = colorArgb,
-                    widthDp = widthDp,
-                    erase = erase,
-                    whitePaper = whitePaper,
-                    contentDescription = stringResource(R.string.draw_canvas_cd),
-                )
-            }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DrawInk.swatches.forEach { swatch ->
-                    val argb = swatch.toArgb()
-                    Swatch(
-                        color = swatch,
-                        selected = !erase && colorArgb == argb,
-                        description = stringResource(R.string.draw_swatch_cd),
-                        onClick = {
-                            colorArgb = argb
-                            erase = false
-                        },
-                    )
-                }
-            }
-            TextButton(onClick = { wheel = true }) {
-                Text(
-                    stringResource(R.string.draw_picker),
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DrawInk.brushSizesDp.forEachIndexed { index, size ->
-                    BrushSize(
-                        diameter = size,
-                        selected = brushIndex == index,
-                        onClick = { brushIndex = index },
-                        description = stringResource(R.string.draw_brush_cd, index + 1),
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                ToolChip(
-                    label = stringResource(R.string.draw_eraser),
-                    selected = erase,
-                    onClick = { erase = !erase },
-                )
-            }
-            ToggleRow(
-                title = stringResource(R.string.draw_paper),
-                help = stringResource(R.string.draw_paper_help),
-                checked = whitePaper,
-                enabled = true,
-                onCheckedChange = { whitePaper = it },
+            Text(
+                stringResource(R.string.tab_activity),
+                style = LdType.Display,
+                color = LdColors.colors.ink,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { model.undo() }, enabled = model.canUndo && !busy) {
-                    Text(stringResource(R.string.draw_undo))
-                }
-                TextButton(onClick = { model.clear() }, enabled = !empty && !busy) {
-                    Text(stringResource(R.string.draw_clear))
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        if (busy || empty) return@OutlinedButton
-                        val size = exportPixels(canvasPx.width, canvasPx.height)
-                        if (size.first <= 1) {
-                            scope.launch { snackbar.showSnackbar(context.getString(R.string.draw_save_failed)) }
-                            return@OutlinedButton
-                        }
-                        busy = true
-                        val strokes = model.strokes
-                        val paper = whitePaper
-                        scope.launch {
-                            val ok = try {
-                                withContext(Dispatchers.IO) {
-                                    val bmp = renderDrawing(strokes, size.first, size.second, paper) ?: return@withContext false
-                                    try {
-                                        val saved = DrawStore.save(context, bmp) != null
-                                        if (saved) DrawingWidget.updateAll(context)
-                                        saved
-                                    } finally {
-                                        if (!bmp.isRecycled) bmp.recycle()
-                                    }
-                                }
-                            } catch (e: CancellationException) {
-                                busy = false
-                                throw e
-                            } catch (_: Exception) {
-                                false
-                            }
-                            busy = false
-                            snackbar.showSnackbar(
-                                context.getString(if (ok) R.string.draw_saved else R.string.draw_save_failed),
-                            )
-                        }
-                    },
-                    enabled = !empty && !busy,
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.draw_save))
-                }
-                Button(
-                    onClick = {
-                        if (busy || empty) return@Button
-                        val size = exportPixels(canvasPx.width, canvasPx.height)
-                        if (size.first <= 1) {
-                            scope.launch { snackbar.showSnackbar(context.getString(R.string.draw_send_failed)) }
-                            return@Button
-                        }
-                        busy = true
-                        val strokes = model.strokes
-                        val paper = whitePaper
-                        scope.launch {
-                            val ok = try {
-                                withContext(Dispatchers.IO) {
-                                    val bmp = renderDrawing(strokes, size.first, size.second, paper) ?: return@withContext false
-                                    try {
-                                        val png = bitmapToPng(bmp) ?: return@withContext false
-                                        DrawSend.send(context, png)
-                                    } finally {
-                                        if (!bmp.isRecycled) bmp.recycle()
-                                    }
-                                }
-                            } catch (e: CancellationException) {
-                                busy = false
-                                throw e
-                            } catch (_: Exception) {
-                                false
-                            }
-                            busy = false
-                            snackbar.showSnackbar(
-                                context.getString(if (ok) R.string.draw_sent else R.string.draw_send_failed),
-                            )
-                        }
-                    },
-                    enabled = !empty && !busy,
-                    modifier = Modifier.weight(1f).height(52.dp),
-                ) {
-                    Text(stringResource(R.string.draw_send))
+            cards.forEachIndexed { index, card ->
+                when (card) {
+                    HubCard.Draw -> HubTile(
+                        title = stringResource(R.string.activity_draw),
+                        subtitle = drawSubtitle,
+                        index = index,
+                        onClick = onOpenDrawing,
+                    ) {
+                        DrawMedia(thumb = thumb, waiting = partnerFile != null && thumb == null)
+                    }
+                    HubCard.Music -> HubTile(
+                        title = stringResource(R.string.activity_music),
+                        subtitle = stringResource(R.string.activity_listen_sync),
+                        index = index,
+                        onClick = onOpenMusic,
+                    ) {
+                        MusicMedia()
+                    }
                 }
             }
-            if (busy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp).align(Alignment.CenterHorizontally),
-                    strokeWidth = 2.dp,
-                )
-            }
-        }
         }
     }
 }
 
-@Composable
-private fun PartnerDrawingCard() {
-    val context = LocalContext.current
-    val drawRev by DrawStore.changes.collectAsState()
-    val storeRev by Store.changes.collectAsState()
-    val name = remember(storeRev) {
-        Store.partnerName(context).ifBlank { context.getString(R.string.partner_fallback) }
-    }
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(drawRev) {
-        bitmap = withContext(Dispatchers.IO) {
-            val file = DrawStore.latestFromPartner(context) ?: return@withContext null
-            DrawStore.decode(file, 480)
-        }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().ldGlass(MaterialTheme.shapes.large).padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-            val shown = bitmap
-            if (shown != null && !shown.isRecycled) {
-                Image(
-                    bitmap = shown.asImageBitmap(),
-                    contentDescription = stringResource(R.string.draw_from, name),
-                    modifier = Modifier.size(72.dp).clip(MaterialTheme.shapes.medium),
-                    contentScale = ContentScale.Crop,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    stringResource(R.string.draw_from, name),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (shown == null || shown.isRecycled) {
-                    Text(
-                        stringResource(R.string.draw_none_yet),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-    }
-}
+private enum class HubCard { Draw, Music }
 
 @Composable
-private fun Swatch(
-    color: androidx.compose.ui.graphics.Color,
-    selected: Boolean,
-    description: String,
+private fun HubTile(
+    title: String,
+    subtitle: String,
+    index: Int,
     onClick: () -> Unit,
+    media: @Composable () -> Unit,
 ) {
-    val dark = isSystemInDarkTheme()
-    val whiteInk = color == LdColors.paper || color == LdColors.white
-    val outline = when {
-        selected -> MaterialTheme.colorScheme.primary
-        dark -> LdColors.white
-        whiteInk -> LdColors.navy
-        else -> MaterialTheme.colorScheme.outline
-    }
-    val stroke = when {
-        selected -> 3.dp
-        dark || whiteInk -> 2.dp
-        else -> 1.dp
-    }
-    Surface(
+    val interaction = remember(title) { MutableInteractionSource() }
+    val shape = RoundedCornerShape(LdRadius.card)
+    val mediaShape = RoundedCornerShape(LdRadius.inner(LdRadius.card, 8.dp))
+    Column(
         modifier = Modifier
-            .size(32.dp)
-            .semantics { contentDescription = description },
-        shape = CircleShape,
-        color = color,
-        border = androidx.compose.foundation.BorderStroke(stroke, outline),
-        onClick = onClick,
-        shadowElevation = 0.dp,
-    ) {}
-}
-
-@Composable
-private fun BrushSize(
-    diameter: Float,
-    selected: Boolean,
-    description: String,
-    onClick: () -> Unit,
-) {
-    val outline = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .appear(index)
+            .pressScale(interaction)
+            .ldGlass(shape, strong = true)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
-            Modifier
-                .size(diameter.dp.coerceAtLeast(4.dp).coerceAtMost(28.dp))
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.onSurface)
-                .then(if (selected) Modifier.border(2.dp, outline, CircleShape) else Modifier),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clip(mediaShape),
+        ) {
+            media()
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(title, style = LdType.Title, color = LdColors.colors.ink)
+                Text(subtitle, style = LdType.Caption, color = LdColors.colors.inkMuted)
+            }
+            Text(
+                stringResource(R.string.activity_open),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(LdRadius.chip))
+                    .background(LdColors.bubbleMine)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                style = LdType.Caption,
+                color = LdColors.white,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawMedia(thumb: Bitmap?, waiting: Boolean) {
+    val sky = LdColors.colors
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.linearGradient(listOf(sky.skyTop, sky.skyBottom))),
+    ) {
+        when {
+            thumb != null && !thumb.isRecycled -> Image(
+                bitmap = thumb.asImageBitmap(),
+                contentDescription = stringResource(R.string.draw_partner),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+            waiting -> Box(Modifier.fillMaxSize().background(LdColors.paper.copy(alpha = 0.72f)))
+            else -> EmptyDrawing()
+        }
+    }
+}
+
+@Composable
+private fun EmptyDrawing() {
+    Box(Modifier.fillMaxSize()) {
+        EmptyDrawingArt()
+        LuIcon(
+            Lu.Pencil,
+            contentDescription = null,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+            tint = LdColors.primary,
         )
     }
 }
 
 @Composable
-private fun ToolChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val c = LdColors.colors
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = if (selected) c.chipOn else c.glass,
-        border = androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder),
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
-    ) {
-        Text(
-            label,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) c.chipOnInk else c.ink,
+private fun EmptyDrawingArt() {
+    Canvas(Modifier.fillMaxSize()) {
+        val inset = 16.dp.toPx()
+        val corner = 4.dp.toPx()
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.92f),
+            topLeft = Offset(inset, inset),
+            size = Size(size.width - inset * 2f, size.height - inset * 2f),
+            cornerRadius = CornerRadius(corner, corner),
         )
+        val left = inset + 28.dp.toPx()
+        val right = size.width - inset - 28.dp.toPx()
+        val mid = size.height / 2f
+        val path = Path().apply {
+            moveTo(left, mid + 16.dp.toPx())
+            quadraticBezierTo(left + (right - left) * 0.35f, mid - 36.dp.toPx(), (left + right) / 2f, mid)
+            quadraticBezierTo(left + (right - left) * 0.75f, mid + 28.dp.toPx(), right, mid - 8.dp.toPx())
+        }
+        drawPath(
+            path,
+            color = LdColors.inkBlue,
+            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+@Composable
+private fun MusicMedia() {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.linearGradient(
+                    listOf(LdColors.bubbleMine, Color(0xFF0E4C9C), LdColors.navy),
+                ),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawCircle(Color.White.copy(alpha = 0.16f), radius = size.minDimension * 0.46f)
+            drawCircle(Color.White.copy(alpha = 0.12f), radius = size.minDimension * 0.30f)
+        }
+        LuIcon(Lu.Headphones, contentDescription = null, tint = LdColors.white, size = 48.dp)
     }
 }

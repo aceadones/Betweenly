@@ -1,280 +1,129 @@
 package app.loviedowpie.ui
 
-import android.graphics.Bitmap
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import java.io.ByteArrayOutputStream
+import app.loviedowpie.R
 import kotlin.math.min
-import android.graphics.Canvas as AndroidCanvas
-import android.graphics.Path as AndroidPath
 
 /**
- * The finger canvas. Strokes are smoothed with quadratic segments through
- * midpoints. An offscreen layer lets the eraser punch holes without clearing
- * the rest of the window.
+ * The paper. The ink bitmap is clipped to the same rounded rect as the card,
+ * so a stroke cannot poke out of the corner. Export stays square; this clip is only on screen.
  */
 @Composable
-fun DrawCanvas(
+internal fun StudioPaper(
     model: DrawingViewModel,
-    colorArgb: Int,
-    widthDp: Float,
-    erase: Boolean,
-    whitePaper: Boolean,
-    contentDescription: String,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val colorState = rememberUpdatedState(colorArgb)
-    val widthState = rememberUpdatedState(widthDp)
-    val eraseState = rememberUpdatedState(erase)
-    val shape = MaterialTheme.shapes.large
-    val paper = if (whitePaper) LdColors.paper else LdColors.clear
-    val behind = MaterialTheme.colorScheme.surfaceVariant
-    val outline = MaterialTheme.colorScheme.outline
-    val version = model.activeVersion
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(LdRadius.card)
+    val description = stringResource(R.string.draw_canvas_cd)
+    val border = when (model.paper) {
+        PaperKind.Dark -> Color.White.copy(alpha = 0.22f)
+        else -> Color.Black.copy(alpha = 0.10f)
+    }
+    val shadow = LdColors.colors.shadow
     Canvas(
         modifier
-            .fillMaxSize()
-            .border(1.dp, outline, shape)
-            .background(behind, shape)
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .semantics { this.contentDescription = contentDescription }
-            .pointerInput(model) {
+            .shadow(12.dp, shape, clip = false, ambientColor = shadow, spotColor = shadow)
+            .clip(shape)
+            .border(1.dp, border, shape)
+            .semantics { contentDescription = description }
+            .pointerInput(enabled, model) {
+                if (!enabled || !model.canDraw()) return@pointerInput
                 awaitEachGesture {
-                    val down = awaitFirstDown()
-                    val minSide = min(size.width, size.height).toFloat()
-                    if (minSide < 2f) return@awaitEachGesture
-                    val fraction = (widthState.value * density / minSide).coerceIn(0.002f, 0.25f)
-                    model.begin(colorState.value, fraction, eraseState.value)
-                    try {
-                        fun accept(offset: Offset) {
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
-                            if (w < 2f || h < 2f) return
-                            model.add(NormPoint(offset.x / w, offset.y / h))
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val pointerId = down.id
+                    val w = size.width.toFloat().coerceAtLeast(1f)
+                    val h = size.height.toFloat().coerceAtLeast(1f)
+                    var started = false
+                    fun accept(offset: Offset) {
+                        val nx = (offset.x / w).coerceIn(0f, 1f)
+                        val ny = (offset.y / h).coerceIn(0f, 1f)
+                        if (!started) {
+                            model.beginStroke(nx, ny)
+                            started = true
+                        } else {
+                            model.moveStroke(nx, ny)
                         }
-                        down.historical.forEach { accept(it.position) }
+                    }
+                    try {
                         accept(down.position)
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            change.historical.forEach { accept(it.position) }
+                            val change = event.changes.firstOrNull { it.id == pointerId } ?: break
                             accept(change.position)
                             change.consume()
                             if (!change.pressed) break
                         }
                     } finally {
-                        model.end()
+                        model.endStroke()
                     }
                 }
-            },
+            }
+            .fillMaxSize(),
     ) {
-        // [version] is read so a new point redraws this canvas only.
-        if (version < 0) return@Canvas
-        if (whitePaper) drawRect(paper)
-        model.strokes.forEach { stroke ->
-            drawStroke(stroke.points, stroke.colorArgb, stroke.widthFraction, stroke.erase, whitePaper)
-        }
-        if (size.minDimension >= 2f) {
-            val fraction = (widthDp * density / size.minDimension).coerceIn(0.002f, 0.25f)
-            drawStroke(model.activePoints(), colorArgb, fraction, erase, whitePaper)
-        }
-    }
-}
-
-private fun DrawScope.drawStroke(
-    points: List<NormPoint>,
-    colorArgb: Int,
-    widthFraction: Float,
-    erase: Boolean,
-    whitePaper: Boolean,
-) {
-    if (points.isEmpty()) return
-    val minSide = min(size.width, size.height)
-    val strokePx = (widthFraction * minSide).coerceAtLeast(1f)
-    val offsets = ArrayList<Offset>(points.size)
-    for (point in points) {
-        offsets.add(Offset(point.x * size.width, point.y * size.height))
-    }
-    val color = when {
-        erase && whitePaper -> LdColors.paper
-        erase -> LdColors.clear
-        else -> Color(colorArgb)
-    }
-    val mode = if (erase && !whitePaper) BlendMode.Clear else BlendMode.SrcOver
-    if (offsets.size == 1) {
-        drawCircle(color = color, radius = strokePx / 2f, center = offsets[0], blendMode = mode)
-        return
-    }
-    drawPath(
-        path = smoothPath(offsets),
-        color = color,
-        style = Stroke(width = strokePx, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        blendMode = mode,
-    )
-}
-
-/** Quadratic segments through the midpoint of each pair, then a short line to the last point. */
-internal fun smoothPath(points: List<Offset>): Path {
-    val path = Path()
-    path.moveTo(points[0].x, points[0].y)
-    if (points.size == 2) {
-        path.lineTo(points[1].x, points[1].y)
-        return path
-    }
-    for (i in 1 until points.lastIndex) {
-        val control = points[i]
-        val next = points[i + 1]
-        path.quadraticBezierTo(
-            control.x,
-            control.y,
-            (control.x + next.x) / 2f,
-            (control.y + next.y) / 2f,
-        )
-    }
-    val last = points.last()
-    path.lineTo(last.x, last.y)
-    return path
-}
-
-/** Longest side of an export, in pixels. Keeps a drawing well under the relay's 24 MB cap. */
-fun exportPixels(widthPx: Int, heightPx: Int): Pair<Int, Int> {
-    if (widthPx <= 1 || heightPx <= 1) return 0 to 0
-    val maxEdge = 1280
-    val longest = maxOf(widthPx, heightPx)
-    val scale = min(1f, maxEdge.toFloat() / longest.toFloat())
-    return (widthPx * scale).toInt().coerceAtLeast(1) to (heightPx * scale).toInt().coerceAtLeast(1)
-}
-
-/**
- * Renders [strokes] into a PNG-ready bitmap. White paper is opaque white.
- * Transparent paper keeps the eraser as real alpha.
- */
-fun renderDrawing(
-    strokes: List<DrawStroke>,
-    widthPx: Int,
-    heightPx: Int,
-    whitePaper: Boolean,
-): Bitmap? {
-    if (strokes.isEmpty() || widthPx <= 1 || heightPx <= 1) return null
-    return try {
-        drawToBitmap(strokes, widthPx, heightPx, whitePaper)
-            ?: drawToBitmap(strokes, widthPx / 2, heightPx / 2, whitePaper)
-    } catch (_: Exception) {
-        null
-    } catch (_: OutOfMemoryError) {
-        null
-    }
-}
-
-private fun drawToBitmap(
-    strokes: List<DrawStroke>,
-    widthPx: Int,
-    heightPx: Int,
-    whitePaper: Boolean,
-): Bitmap? {
-    if (widthPx <= 1 || heightPx <= 1) return null
-    val bitmap = try {
-        Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
-    } catch (_: OutOfMemoryError) {
-        return null
-    }
-    try {
-        val canvas = AndroidCanvas(bitmap)
-        if (whitePaper) {
-            canvas.drawColor(LdColors.paper.toArgb())
+        val frame = model.frame
+        if (frame < 0 || !model.canDraw()) return@Canvas
+        model.image.prepareToDraw()
+        if (model.paper == PaperKind.Clear) {
+            drawChecker(16.dp.toPx())
         } else {
-            canvas.drawColor(LdColors.clear.toArgb(), PorterDuff.Mode.CLEAR)
+            val argb = model.paper.argb
+            if (argb != null) drawRect(Color(argb))
         }
-        val minSide = min(widthPx, heightPx).toFloat()
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
+        drawImage(
+            image = model.image,
+            dstSize = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
+            filterQuality = FilterQuality.Medium,
+        )
+        val cursor = model.cursor
+        if (model.eraser && model.drawing && cursor != null && model.side > 1) {
+            val radius = (model.sizePx / model.side.toFloat()) * min(size.width, size.height) / 2f
+            val center = Offset(cursor.x * size.width, cursor.y * size.height)
+            drawCircle(Color.Black.copy(alpha = 0.55f), radius, center, style = Stroke(width = 1.5.dp.toPx()))
+            drawCircle(Color.White.copy(alpha = 0.92f), radius, center, style = Stroke(width = 1.dp.toPx()))
         }
-        for (stroke in strokes) {
-            if (stroke.points.isEmpty()) continue
-            paint.strokeWidth = (stroke.widthFraction * minSide).coerceAtLeast(1f)
-            if (stroke.erase && !whitePaper) {
-                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-                paint.color = LdColors.clear.toArgb()
-            } else if (stroke.erase) {
-                paint.xfermode = null
-                paint.color = LdColors.paper.toArgb()
-            } else {
-                paint.xfermode = null
-                paint.color = stroke.colorArgb
-            }
-            if (stroke.points.size == 1) {
-                val p = stroke.points[0]
-                paint.style = Paint.Style.FILL
-                canvas.drawCircle(p.x * widthPx, p.y * heightPx, paint.strokeWidth / 2f, paint)
-                paint.style = Paint.Style.STROKE
-                continue
-            }
-            canvas.drawPath(androidSmoothPath(stroke.points, widthPx.toFloat(), heightPx.toFloat()), paint)
-        }
-        return bitmap
-    } catch (_: Exception) {
-        bitmap.recycle()
-        return null
-    } catch (_: OutOfMemoryError) {
-        bitmap.recycle()
-        return null
     }
 }
 
-private fun androidSmoothPath(points: List<NormPoint>, width: Float, height: Float): AndroidPath {
-    val path = AndroidPath()
-    fun x(i: Int) = points[i].x * width
-    fun y(i: Int) = points[i].y * height
-    path.moveTo(x(0), y(0))
-    if (points.size == 2) {
-        path.lineTo(x(1), y(1))
-        return path
-    }
-    for (i in 1 until points.lastIndex) {
-        val nx = x(i + 1)
-        val ny = y(i + 1)
-        path.quadTo(x(i), y(i), (x(i) + nx) / 2f, (y(i) + ny) / 2f)
-    }
-    path.lineTo(x(points.lastIndex), y(points.lastIndex))
-    return path
-}
-
-fun bitmapToPng(bitmap: Bitmap): ByteArray? {
-    return try {
-        val out = ByteArrayOutputStream()
-        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) return null
-        out.toByteArray().takeIf { it.isNotEmpty() }
-    } catch (_: Exception) {
-        null
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawChecker(cell: Float) {
+    val dark = Color(0xFFD9D9DE)
+    val light = Color(0xFFF4F4F6)
+    val step = cell.coerceAtLeast(4f)
+    var y = 0f
+    var row = 0
+    while (y < size.height) {
+        var x = 0f
+        var col = 0
+        while (x < size.width) {
+            drawRect(
+                color = if ((row + col) % 2 == 0) light else dark,
+                topLeft = Offset(x, y),
+                size = Size(step, step),
+            )
+            x += step
+            col++
+        }
+        y += step
+        row++
     }
 }

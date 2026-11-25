@@ -1,10 +1,13 @@
 package app.loviedowpie.ui
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,10 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
@@ -35,15 +35,15 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import app.loviedowpie.CameraCaps
 import app.loviedowpie.R
+import app.loviedowpie.ui.icons.Lu
+import app.loviedowpie.ui.icons.LuIcon
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -102,7 +104,7 @@ internal fun CameraOverlay(
             RoundIconButton(
                 onClick = onClose,
                 description = stringResource(R.string.camera_close),
-                icon = Icons.Filled.Close,
+                icon = Lu.X,
             )
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 if (!qualityLabel.isNullOrEmpty()) {
@@ -174,7 +176,7 @@ internal fun CameraOverlay(
                         onClick = onFlip,
                         enabled = !controlsLocked,
                         description = stringResource(R.string.camera_switch),
-                        icon = FlipIcon,
+                        icon = Lu.SwitchCamera,
                     )
                 } else {
                     Spacer(Modifier.size(48.dp))
@@ -251,29 +253,50 @@ private fun RecordingClock(elapsedMs: Long) {
 
 @Composable
 private fun ModeSwitch(video: Boolean, enabled: Boolean, onPhoto: () -> Unit, onVideo: () -> Unit) {
+    val shape = RoundedCornerShape(LdRadius.chip)
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .border(1.dp, if (enabled) CameraChrome.content else CameraChrome.faint, RoundedCornerShape(50)),
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.12f))
+            .padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ModeChip(stringResource(R.string.camera_photo), selected = !video, enabled = enabled, onClick = onPhoto)
-        ModeChip(stringResource(R.string.camera_video), selected = video, enabled = enabled, onClick = onVideo)
+        ModeChip(stringResource(R.string.camera_photo), Lu.Camera, selected = !video, enabled = enabled, onClick = onPhoto)
+        ModeChip(stringResource(R.string.camera_video), Lu.Video, selected = video, enabled = enabled, onClick = onVideo)
     }
 }
 
 @Composable
-private fun ModeChip(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Text(
-        text,
-        color = if (selected) CameraChrome.background else CameraChrome.content,
-        style = MaterialTheme.typography.labelLarge,
+private fun ModeChip(
+    text: String,
+    icon: ImageVector,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val press = remember { MutableInteractionSource() }
+    val color = if (selected) CameraChrome.background else CameraChrome.content
+    Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(50))
+            .heightIn(min = 48.dp)
+            .pressScale(press)
+            .clip(RoundedCornerShape(LdRadius.chip))
             .background(if (selected) CameraChrome.content else LdColors.clear)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 8.dp)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(if (enabled || selected) 1f else 0.4f),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        LuIcon(icon, contentDescription = null, tint = color, size = 20.dp)
+        Text(text, color = color, style = MaterialTheme.typography.labelLarge)
+    }
 }
 
 @Composable
@@ -285,15 +308,23 @@ private fun ShutterButton(videoMode: Boolean, recording: Boolean, enabled: Boole
             else -> R.string.camera_take_photo
         },
     )
+    val press = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
+            .pressScale(press)
             .size(78.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .border(4.dp, CameraChrome.content, CircleShape)
             .padding(6.dp)
             .clip(CircleShape)
             .background(CameraChrome.content)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -325,7 +356,7 @@ private fun FlashButton(session: CameraSession, videoMode: Boolean, enabled: Boo
         onClick = onClick,
         enabled = enabled,
         description = description,
-        icon = FlashIcon,
+        icon = Lu.Zap,
         tint = if (active) CameraChrome.content else CameraChrome.faint,
         badge = if (auto) stringResource(R.string.camera_flash_auto_mark) else null,
     )
@@ -340,16 +371,26 @@ internal fun RoundIconButton(
     tint: Color = CameraChrome.content,
     badge: String? = null,
 ) {
+    val press = remember { MutableInteractionSource() }
     Box(
         modifier = Modifier
+            .pressScale(press)
             .size(48.dp)
+            .shadow(8.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.28f), spotColor = Color.Black.copy(alpha = 0.28f))
             .clip(CircleShape)
-            .background(CameraChrome.scrim)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .background(Color.White.copy(alpha = 0.18f))
+            .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint)
+        LuIcon(icon, contentDescription = description, tint = tint)
         if (badge != null) {
             Text(
                 badge,
@@ -375,6 +416,7 @@ internal fun QualityDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.ldPopupFrame(),
+        shape = MaterialTheme.shapes.extraLarge,
         containerColor = LdColors.colors.menu,
         tonalElevation = 0.dp,
         titleContentColor = LdColors.colors.ink,
@@ -386,7 +428,7 @@ internal fun QualityDialog(
                     Text(
                         stringResource(R.string.camera_video_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = LdColors.colors.inkMuted,
                     )
                     videos.forEach { choice ->
                         QualityRow(choice.label, selected = video != null && video.quality == choice.quality && video.fps == choice.fps) {
@@ -491,48 +533,3 @@ internal fun formatClock(ms: Long): String {
     val seconds = total % 60L
     return String.format(Locale.US, "%d:%02d", minutes, seconds)
 }
-
-private val FlashIcon: ImageVector = ImageVector.Builder(
-    name = "Flash",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(LdColors.cameraContent)) {
-        moveTo(7f, 2f)
-        verticalLineToRelative(11f)
-        horizontalLineToRelative(3f)
-        verticalLineToRelative(9f)
-        lineToRelative(7f, -12f)
-        horizontalLineToRelative(-4f)
-        lineToRelative(4f, -8f)
-        close()
-    }
-}.build()
-
-private val FlipIcon: ImageVector = ImageVector.Builder(
-    name = "FlipCamera",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(LdColors.cameraContent)) {
-        moveTo(17.65f, 6.35f)
-        curveTo(16.2f, 4.9f, 14.21f, 4f, 12f, 4f)
-        curveToRelative(-4.42f, 0f, -7.99f, 3.58f, -7.99f, 8f)
-        reflectiveCurveToRelative(3.57f, 8f, 7.99f, 8f)
-        curveToRelative(3.73f, 0f, 6.84f, -2.55f, 7.73f, -6f)
-        horizontalLineToRelative(-2.08f)
-        curveToRelative(-0.82f, 2.33f, -3.04f, 4f, -5.65f, 4f)
-        curveToRelative(-3.31f, 0f, -6f, -2.69f, -6f, -6f)
-        reflectiveCurveToRelative(2.69f, -6f, 6f, -6f)
-        curveToRelative(1.66f, 0f, 3.14f, 0.69f, 4.22f, 1.78f)
-        lineTo(13f, 11f)
-        horizontalLineToRelative(7f)
-        verticalLineTo(4f)
-        lineTo(17.65f, 6.35f)
-        close()
-    }
-}.build()

@@ -26,6 +26,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Sound on a video. If this is denied, the video is recorded without audio. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Songs already on this phone. Asked only from Hear together. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Same library on Android 9–12. Android 13+ uses READ_MEDIA_AUDIO instead. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!-- These permissions would otherwise mark the hardware as required. -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />

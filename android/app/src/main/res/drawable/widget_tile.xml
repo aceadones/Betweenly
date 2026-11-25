@@ -2,6 +2,7 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/widget_tile" />
-    <corners android:radius="20dp" />
+    <!-- Card is 28dp with 8dp padding and 4dp tile margin, so the tile is 16dp. -->
+    <corners android:radius="16dp" />
     <stroke android:width="1dp" android:color="@color/widget_border" />
 </shape>

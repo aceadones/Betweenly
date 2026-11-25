@@ -116,7 +116,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
             Column(
                 modifier = Modifier
                     .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 PrimaryPill(
@@ -142,10 +142,10 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(stringResource(R.string.onboarding_title), style = MaterialTheme.typography.headlineLarge)
+            Text(stringResource(R.string.onboarding_title), style = LdType.Display, color = LdColors.colors.ink)
             Text(
                 stringResource(R.string.onboarding_intro),
                 style = MaterialTheme.typography.bodyLarge,
@@ -172,6 +172,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 Store.setMyAvatar(context, jpeg)
             }
             PermissionRow(
+                modifier = Modifier.appear(0),
                 title = stringResource(R.string.perm_notifications_title),
                 body = stringResource(R.string.perm_notifications_body),
                 allowed = notificationsOk,
@@ -189,6 +190,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 onSettings = ::openSettings,
             )
             PermissionRow(
+                modifier = Modifier.appear(1),
                 title = stringResource(R.string.perm_location_title),
                 body = stringResource(R.string.perm_location_body),
                 allowed = locationOk,
@@ -208,6 +210,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
             )
             if (locationOk && Build.VERSION.SDK_INT >= 29) {
                 PermissionRow(
+                    modifier = Modifier.appear(2),
                     title = stringResource(R.string.perm_background_title),
                     body = stringResource(R.string.perm_background_body),
                     allowed = backgroundOk,
@@ -222,6 +225,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 )
             }
             PermissionRow(
+                modifier = Modifier.appear(3),
                 title = stringResource(R.string.perm_battery_title),
                 body = stringResource(R.string.perm_battery_body),
                 allowed = batteryOk,
@@ -250,9 +254,10 @@ private fun PermissionRow(
     allowed: Boolean,
     onAllow: (() -> Unit)?,
     onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
+        modifier = modifier.fillMaxWidth().ldGlass().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(title, style = MaterialTheme.typography.titleMedium)

@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -33,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
+import app.loviedowpie.ui.icons.Lu
 import app.loviedowpie.BuildConfig
 import app.loviedowpie.R
 import app.loviedowpie.Store
@@ -105,7 +104,7 @@ fun HomeScreen(onTrack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             GreetingHeader(
@@ -115,14 +114,14 @@ fun HomeScreen(onTrack: () -> Unit) {
             ) {
                 GlassIconButton(
                     onClick = onTrack,
-                    icon = Icons.Filled.LocationOn,
+                    icon = Lu.MapPin,
                     description = stringResource(R.string.track_map),
                 )
             }
-            update?.let { UpdateBanner(it) }
+            update?.let { UpdateBanner(it, Modifier.appear(1)) }
             Column(
-                modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().ldGlass().padding(8.dp).appear(2),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RoundAvatar(revision, { Store.partnerAvatar(context) }, name, 72.dp)
@@ -172,14 +171,14 @@ fun HomeScreen(onTrack: () -> Unit) {
                     StatTile(
                         stringResource(R.string.stat_battery),
                         batteryText,
-                        Modifier.weight(1f),
+                        Modifier.weight(1f).appear(0),
                     )
-                    StatTile(stringResource(R.string.stat_seen), seenValue, Modifier.weight(1f))
-                    StatTile(stringResource(R.string.stat_accuracy), accuracyValue, Modifier.weight(1f))
+                    StatTile(stringResource(R.string.stat_seen), seenValue, Modifier.weight(1f).appear(1))
+                    StatTile(stringResource(R.string.stat_accuracy), accuracyValue, Modifier.weight(1f).appear(2))
                 }
             }
             Column(
-                modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().ldGlass().padding(16.dp).appear(3),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(stringResource(R.string.you), style = MaterialTheme.typography.titleMedium)

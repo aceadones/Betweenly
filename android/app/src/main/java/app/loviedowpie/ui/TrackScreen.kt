@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalView
@@ -49,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
 import app.loviedowpie.R
+import app.loviedowpie.ui.icons.Lu
 import app.loviedowpie.Store
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -120,7 +119,7 @@ fun TrackScreen(onBack: () -> Unit) {
                 MapTopScrim()
                 GlassIconButton(
                     onClick = onBack,
-                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    icon = Lu.ArrowLeft,
                     description = stringResource(R.string.back),
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -151,8 +150,8 @@ fun TrackScreen(onBack: () -> Unit) {
                             .statusBarsPadding()
                             .padding(top = 64.dp, start = 16.dp, end = 16.dp)
                             .fillMaxWidth()
-                            .ldGlass(RoundedCornerShape(24.dp))
-                            .padding(12.dp),
+                            .ldGlass(RoundedCornerShape(LdRadius.card))
+                            .padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = LdColors.colors.ink,
                     )
@@ -168,8 +167,8 @@ fun TrackScreen(onBack: () -> Unit) {
                                 end = 16.dp,
                             )
                             .fillMaxWidth()
-                            .ldGlass(RoundedCornerShape(24.dp))
-                            .padding(12.dp),
+                            .ldGlass(RoundedCornerShape(LdRadius.card))
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)

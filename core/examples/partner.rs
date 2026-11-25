@@ -14,6 +14,9 @@
 //!   sticker <file.png>
 //!   gif <file.gif>
 //!   file <path>
+//!   unsend <id>
+//!   wall color <0-5>
+//!   react <id> <emoji>
 //!   quit
 //!
 //! Every decrypted inbox message is printed. Attachments and drawings are
@@ -195,7 +198,7 @@ fn handle_line(session: &Mutex<Session>, relay: &str, outbox: &str, line: &str) 
     match cmd.as_str() {
         "quit" | "exit" => true,
         "help" => {
-            println!("chat <text> | ring | share on|off | loc <lat> <lon> <bat> | draw <png> | photo <file> | sticker <png> | gif <gif> | file <path> | quit");
+            println!("chat <text> | ring | share on|off | loc <lat> <lon> <bat> | draw <png> | photo <file> | sticker <png> | gif <gif> | file <path> | unsend <id> | wall color <0-5> | react <id> <emoji> | quit");
             false
         }
         "chat" => {
@@ -269,11 +272,65 @@ fn handle_line(session: &Mutex<Session>, relay: &str, outbox: &str, line: &str) 
             send_attachment(session, relay, outbox, arg, "file");
             false
         }
+        "unsend" => {
+            let id = arg.to_ascii_lowercase();
+            if !msg_id(&id) {
+                println!("usage: unsend <id>");
+            } else {
+                let json = format!("{{\"t\":\"unsend\",\"id\":\"{id}\"}}");
+                let _ = send_json(session, relay, outbox, &json, false);
+            }
+            false
+        }
+        "wall" => {
+            send_wall_color(session, relay, outbox, arg);
+            false
+        }
+        "react" => {
+            send_react(session, relay, outbox, arg);
+            false
+        }
         _ => {
             println!("unknown command. type help");
             false
         }
     }
+}
+
+fn msg_id(id: &str) -> bool {
+    id.len() == 16 && id.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn send_wall_color(session: &Mutex<Session>, relay: &str, outbox: &str, arg: &str) {
+    let mut parts = arg.split_whitespace();
+    let kind = parts.next().unwrap_or("").to_ascii_lowercase();
+    let color = parts.next().and_then(|s| s.parse::<i32>().ok());
+    let extra = parts.next();
+    match (kind.as_str(), color, extra) {
+        ("color", Some(n), None) if (0..=5).contains(&n) => {
+            let json = format!(
+                "{{\"t\":\"wall\",\"kind\":\"color\",\"color\":{n},\"fid\":\"\",\"key\":\"\",\"ts\":{}}}",
+                now_ms(),
+            );
+            let _ = send_json(session, relay, outbox, &json, false);
+        }
+        _ => println!("usage: wall color <0-5>"),
+    }
+}
+
+fn send_react(session: &Mutex<Session>, relay: &str, outbox: &str, arg: &str) {
+    let mut parts = arg.split_whitespace();
+    let id = parts.next().unwrap_or("").to_ascii_lowercase();
+    let emoji = parts.next().unwrap_or("");
+    if !msg_id(&id) || emoji.is_empty() || emoji.chars().count() > 16 || parts.next().is_some() {
+        println!("usage: react <id> <emoji>");
+        return;
+    }
+    let json = format!(
+        "{{\"t\":\"react\",\"id\":\"{id}\",\"emoji\":\"{}\"}}",
+        json_escape(emoji),
+    );
+    let _ = send_json(session, relay, outbox, &json, true);
 }
 
 fn parse_loc(arg: &str) -> Option<(f64, f64, i32)> {

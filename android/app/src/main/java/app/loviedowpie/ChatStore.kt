@@ -23,8 +23,9 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * One stored chat message. [json] is the plaintext payload (already decrypted).
- * Local-only keys `rx` (reaction emoji) and `gal` (1 after a gallery copy) are
- * stripped before anything is sent.
+ * Local-only keys `rx` (partner reaction emoji), `mx` (this phone's reaction),
+ * and `gal` (1 after a gallery copy) are stripped before anything is sent.
+ * A tombstone is `t` = `gone`. A centered system line is `t` = `note`.
  */
 class ChatMessage(
     val id: String,
@@ -239,11 +240,91 @@ object ChatStore {
         return edit(context) { deleteLocked(context, safe) } == true
     }
 
+    /**
+     * The partner's reaction on [id]. The same emoji as the one already stored
+     * clears it. A different emoji replaces it. A reaction that arrives before
+     * the message waits on a side row until [insertIncoming].
+     */
     fun setReaction(context: Context, id: String, emoji: String): Boolean {
         val safe = normalizeId(id) ?: return false
         val clean = emoji.trim().filter { it >= ' ' }.take(16)
         if (clean.isEmpty()) return false
         return edit(context) { setReactionLocked(context, safe, clean) } == true
+    }
+
+    /**
+     * This phone's reaction. An empty [emoji] clears it. Not sent by itself;
+     * the caller sends the separate `react` message.
+     */
+    fun setMyReaction(context: Context, id: String, emoji: String): Boolean {
+        val safe = normalizeId(id) ?: return false
+        val clean = emoji.trim().filter { it >= ' ' }.take(16)
+        return edit(context) { setMineLocked(context, safe, clean) } == true
+    }
+
+    /**
+     * Replaces one row with a tombstone and drops its attachment files, cached
+     * open-file, link preview (it lived in the JSON), and reactions.
+     * [onlyIncoming] is a partner unsend: rows this phone sent are left alone.
+     * The sender passes false and the row must be outgoing.
+     */
+    fun tombstone(context: Context, id: String, onlyIncoming: Boolean): Boolean {
+        val safe = normalizeId(id) ?: return false
+        return edit(context) { tombstoneLocked(context, safe, onlyIncoming) } == true
+    }
+
+    /** Centered system line, encrypted like any other row. It is not a message from either person. */
+    fun insertNote(context: Context, text: String): Boolean {
+        val clean = text.trim().filter { it >= ' ' }.take(200)
+        if (clean.isEmpty()) return false
+        val id = newId()
+        val ts = System.currentTimeMillis()
+        val json = JSONObject().put("t", "note").put("id", id).put("ts", ts).put("text", clean)
+        return edit(context) {
+            insertLocked(context, id, ts, outgoing = false, status = RECEIVED, json = json)
+        } == true
+    }
+
+    /**
+     * Deletes every message and cached attachment on this phone. The shared
+     * wallpaper file and its prefs stay. Safe when the chat screen is open.
+     */
+    fun clearHistory(context: Context): Boolean {
+        val e = epoch.get()
+        if (!Store.isPaired(context)) return false
+        val app = context.applicationContext
+        val ok = synchronized(lock) {
+            if (epoch.get() != e) return@synchronized false
+            try {
+                val database = db(app) ?: return@synchronized false
+                database.delete(TABLE, null, null)
+                val dir = File(app.filesDir, "attachments")
+                if (dir.isDirectory) dir.listFiles()?.forEach { file -> file.delete() }
+                deleteQuiet(File(app.cacheDir, "chat-open"))
+                deleteQuiet(File(app.cacheDir, "chat-anim"))
+                failedMut.value = emptySet()
+                synchronized(unreadLock) {
+                    try {
+                        appPrefs(app).edit().putInt(UNREAD, 0).commit()
+                    } catch (_: Exception) {
+                        // The badge is cleared in memory either way.
+                    }
+                    unreadMut.value = 0
+                }
+                bump()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+        if (ok) {
+            try {
+                ChatNotifications.cancel(app)
+            } catch (_: Exception) {
+                // The rows are already gone.
+            }
+        }
+        return ok
     }
 
     fun hasAttachment(context: Context, id: String): Boolean {
@@ -372,6 +453,14 @@ object ChatStore {
     fun wallpaperFile(context: Context): File =
         File(context.applicationContext.filesDir, "chat_wallpaper.jpg")
 
+    /** Drops the shared wallpaper JPEG. Color and default backgrounds have no file. */
+    fun deleteWallpaper(context: Context) {
+        synchronized(lock) {
+            deleteQuiet(wallpaperFile(context))
+            deleteQuiet(File(context.applicationContext.filesDir, "chat_wallpaper.jpg.tmp"))
+        }
+    }
+
     /**
      * Deletes the chat database, attachment files, wallpaper, and the plaintext
      * cache. Safe to call from [Store.unpair] while that lock is held: this
@@ -471,6 +560,10 @@ object ChatStore {
             val existing = current.json.optString("rx")
             if (existing.isNotEmpty()) json.put("rx", existing)
         }
+        if (json.optString("mx").isEmpty()) {
+            val mine = current.json.optString("mx")
+            if (mine.isNotEmpty()) json.put("mx", mine)
+        }
         val blob = seal(json) ?: return false
         val values = ContentValues().apply { put("body", blob) }
         if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
@@ -482,6 +575,43 @@ object ChatStore {
         val database = db(context) ?: return false
         database.delete(TABLE, "id=?", arrayOf(id))
         database.delete(TABLE, "id=?", arrayOf("rx$id"))
+        deleteAttachmentFiles(context, id)
+        bump()
+        return true
+    }
+
+    private fun setMineLocked(context: Context, id: String, emoji: String): Boolean {
+        val database = db(context) ?: return false
+        val current = readMessage(database, id) ?: return false
+        val type = current.json.optString("t")
+        if (type == "gone" || type == "note") return false
+        if (current.json.optString("mx") == emoji) return true
+        if (emoji.isEmpty()) current.json.remove("mx") else current.json.put("mx", emoji)
+        val blob = seal(current.json) ?: return false
+        val values = ContentValues().apply { put("body", blob) }
+        if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
+        bump()
+        return true
+    }
+
+    private fun tombstoneLocked(context: Context, id: String, onlyIncoming: Boolean): Boolean {
+        val database = db(context) ?: return false
+        val current = readMessage(database, id) ?: return false
+        if (onlyIncoming && current.outgoing) return false
+        if (!onlyIncoming && !current.outgoing) return false
+        if (current.json.optString("t") != "gone") {
+            val gone = JSONObject().put("t", "gone").put("id", id).put("ts", current.ts)
+            val blob = seal(gone) ?: return false
+            val values = ContentValues().apply { put("body", blob) }
+            if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
+        }
+        database.delete(TABLE, "id=?", arrayOf("rx$id"))
+        deleteAttachmentFiles(context, id)
+        bump()
+        return true
+    }
+
+    private fun deleteAttachmentFiles(context: Context, id: String) {
         try {
             File(context.applicationContext.filesDir, "attachments/$id.bin").delete()
             File(context.applicationContext.filesDir, "attachments/$id.bin.tmp").delete()
@@ -489,28 +619,40 @@ object ChatStore {
             cache.listFiles()?.forEach { file ->
                 if (file.name.startsWith("$id-")) file.delete()
             }
+            File(context.applicationContext.cacheDir, "chat-anim/$id.img").delete()
         } catch (_: Exception) {
-            // The row is gone even if a file is not.
+            // The row is already a tombstone even if a file is not.
         }
-        bump()
-        return true
     }
 
     private fun setReactionLocked(context: Context, id: String, emoji: String): Boolean {
         val database = db(context) ?: return false
         val current = readMessage(database, id)
         if (current != null) {
-            current.json.put("rx", emoji)
+            val type = current.json.optString("t")
+            if (type == "gone" || type == "note") return false
+            if (current.json.optString("rx") == emoji) {
+                current.json.remove("rx")
+            } else {
+                current.json.put("rx", emoji)
+            }
             val blob = seal(current.json) ?: return false
             val values = ContentValues().apply { put("body", blob) }
             if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
             database.delete(TABLE, "id=?", arrayOf("rx$id"))
         } else {
-            val pending = JSONObject().put("t", "react").put("id", id).put("emoji", emoji)
-            val blob = seal(pending) ?: return false
-            if (!insertRow(database, "rx$id", System.currentTimeMillis(), DIR_IN, RECEIVED, blob)) {
-                val values = ContentValues().apply { put("body", blob) }
-                if (database.update(TABLE, values, "id=?", arrayOf("rx$id")) <= 0) return false
+            val pendingId = "rx$id"
+            val pending = readJson(database, pendingId)
+            val existing = pending?.optString("emoji").orEmpty()
+            if (existing == emoji) {
+                database.delete(TABLE, "id=?", arrayOf(pendingId))
+            } else {
+                val pendingJson = JSONObject().put("t", "react").put("id", id).put("emoji", emoji)
+                val blob = seal(pendingJson) ?: return false
+                if (!insertRow(database, pendingId, System.currentTimeMillis(), DIR_IN, RECEIVED, blob)) {
+                    val values = ContentValues().apply { put("body", blob) }
+                    if (database.update(TABLE, values, "id=?", arrayOf(pendingId)) <= 0) return false
+                }
             }
         }
         bump()
@@ -699,8 +841,19 @@ object ChatStore {
     }
 }
 
-/** Copies photos and videos into the system gallery. Stickers, GIFs, and files are never copied. */
+/** Copies photos and videos into the system gallery. Stickers, GIFs, and files are never copied by [maybe]. */
 object ChatGallery {
+    /** Saves one photo, video, sticker, or GIF the person asked to keep. False if the gallery refuses. */
+    fun saveToGallery(context: Context, name: String, mime: String, bytes: ByteArray, video: Boolean): Boolean {
+        if (bytes.isEmpty()) return false
+        return try {
+            val fallback = if (video) "video.mp4" else "photo.jpg"
+            writeMedia(context, sanitizeDisplay(name).ifBlank { fallback }, mime, bytes, video)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun maybe(context: Context, id: String, json: JSONObject, bytes: ByteArray) {
         try {
             if (!Store.chatAutoSaveMedia(context)) return

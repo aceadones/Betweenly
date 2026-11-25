@@ -6,10 +6,15 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.graphics.drawable.AnimatedImageDrawable
 import android.util.Base64
+import android.util.LruCache
 import android.widget.ImageView
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -19,16 +24,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,27 +37,37 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.loviedowpie.ChatMessage
 import app.loviedowpie.ChatStore
 import app.loviedowpie.R
+import app.loviedowpie.ui.icons.Lu
+import app.loviedowpie.ui.icons.LuIcon
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
@@ -66,16 +76,23 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 private val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")
 private val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+private val stampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+
+private val stillCache = object : LruCache<String, Bitmap>(12 * 1024 * 1024) {
+    override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount.coerceAtLeast(1)
+}
 
 fun chatDay(ts: Long): LocalDate =
     Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalDate()
 
 fun chatTime(ts: Long): String =
     Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).format(timeFormat)
+
+fun chatStamp(ts: Long): String =
+    Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).format(stampFormat)
 
 @Composable
 fun chatDayLabel(day: LocalDate, today: LocalDate): String {
@@ -94,13 +111,21 @@ fun formatBytes(size: Int): String {
     return String.format(Locale.getDefault(), "%.1f MB", kb / 1024.0)
 }
 
+fun isViewerMedia(message: ChatMessage): Boolean {
+    if (message.json.optString("t") != "att") return false
+    return when (message.json.optString("kind")) {
+        "photo", "video", "sticker", "gif" -> true
+        else -> false
+    }
+}
+
 @Composable
 fun ChatDateLabel(label: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         Surface(
             shape = ChatTheme.chip,
-            color = LdColors.colors.glassStrong,
-            border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+            color = LdColors.colors.menu,
+            border = BorderStroke(1.dp, LdColors.colors.menuBorder),
             shadowElevation = 0.dp,
         ) {
             Text(
@@ -113,11 +138,35 @@ fun ChatDateLabel(label: String) {
     }
 }
 
+@Composable
+fun ChatSystemNote(text: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Surface(
+            shape = ChatTheme.chip,
+            color = LdColors.colors.menu,
+            border = BorderStroke(1.dp, LdColors.colors.menuBorder),
+            shadowElevation = 0.dp,
+        ) {
+            Text(
+                text,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = LdColors.colors.inkMuted,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 /** Short label for a quoted message: the text, or the kind of attachment. */
 @Composable
 fun replySnippet(message: ChatMessage): String {
-    val text = message.json.optString("text").trim()
     val type = message.json.optString("t")
+    if (type == "gone") {
+        return stringResource(if (message.outgoing) R.string.chat_deleted_you else R.string.chat_deleted_them)
+    }
+    if (type == "note") return message.json.optString("text").ifBlank { stringResource(R.string.chat_reply_gone) }
+    val text = message.json.optString("text").trim()
     if (type == "chat" || type == "link") {
         if (text.isNotEmpty()) return text
         val title = message.json.optString("title").trim()
@@ -144,75 +193,207 @@ fun ChatBubble(
     ready: Boolean,
     downloadFailed: Boolean,
     progress: Float?,
-    onLongPress: () -> Unit,
-    onOpenPhoto: () -> Unit,
+    onLongPress: (row: Rect, bubble: Rect) -> Unit,
+    onOpenVisual: (Rect) -> Unit,
     onOpenExternal: () -> Unit,
     onOpenLink: (String) -> Unit,
     onRetryDownload: () -> Unit,
+    onToggleReaction: (String) -> Unit,
+    modifier: Modifier = Modifier,
     quote: String? = null,
     onReply: () -> Unit = {},
+    lit: Boolean = false,
 ) {
     val context = LocalContext.current
     val fid = message.json.optString("fid")
-    LaunchedEffect(message.id, fid) {
-        if (message.json.optString("t") != "att" || fid.length != 32) return@LaunchedEffect
+    val type = message.json.optString("t")
+    LaunchedEffect(message.id, fid, type) {
+        if (type != "att" || fid.length != 32) return@LaunchedEffect
         val has = withContext(Dispatchers.IO) { ChatStore.hasAttachment(context, message.id) }
         if (!has) ChatStore.fetch(context, message.id)
     }
-    val type = message.json.optString("t")
     val kind = message.json.optString("kind")
     val bare = type == "att" && (kind == "sticker" || kind == "gif")
     val arrange = if (message.outgoing) Arrangement.End else Arrangement.Start
-    var drag by remember(message.id) { mutableFloatStateOf(0f) }
+    val rowHolder = remember(message.id) { arrayOf(Rect.Zero) }
+    val bubbleHolder = remember(message.id) { arrayOf(Rect.Zero) }
+    val shift = remember(message.id) { Animatable(0f) }
+    val side = if (message.outgoing) {
+        Modifier.padding(start = 48.dp)
+    } else {
+        Modifier.padding(end = 48.dp)
+    }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .offset { IntOffset(drag.roundToInt().coerceIn(-140, 140), 0) }
-            .swipeReply(onReply = onReply, onDrag = { drag = it }),
+            .onGloballyPositioned { rowHolder[0] = it.boundsInRoot() }
+            .graphicsLayer { translationX = shift.value }
+            .then(
+                if (type == "gone" || type == "note") {
+                    Modifier
+                } else {
+                    Modifier.swipeReply(shift, onReply)
+                },
+            )
+            .then(side),
         horizontalArrangement = arrange,
     ) {
         Column(horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start) {
-            if (bare) {
+            if (type == "gone") {
+                Tombstone(message, bubbleHolder) {
+                    onLongPress(rowHolder[0], bubbleHolder[0])
+                }
+            } else if (bare) {
                 if (!quote.isNullOrBlank()) QuoteChip(quote, message.outgoing)
-                BareImage(message, ready, downloadFailed, progress, onLongPress, onRetryDownload)
+                BareImage(
+                    message, ready, downloadFailed, progress,
+                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                    onOpen = { onOpenVisual(bubbleHolder[0]) },
+                    onRetryDownload = onRetryDownload,
+                    onPosition = { bubbleHolder[0] = it },
+                    lit = lit,
+                )
             } else {
+                val shape = ChatTheme.bubble
                 Surface(
-                    shape = ChatTheme.bubble,
+                    shape = shape,
                     color = if (message.outgoing) ChatTheme.mine() else ChatTheme.theirs(),
-                    border = if (message.outgoing) {
-                        null
-                    } else {
-                        BorderStroke(1.dp, LdColors.colors.glassBorder)
+                    border = when {
+                        lit -> BorderStroke(2.dp, LdColors.white)
+                        message.outgoing -> null
+                        else -> BorderStroke(1.dp, LdColors.colors.glassBorder)
                     },
                     shadowElevation = 0.dp,
-                    modifier = Modifier.widthIn(max = 300.dp),
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .onGloballyPositioned { bubbleHolder[0] = it.boundsInRoot() },
                 ) {
-                    Column(Modifier.padding(if (type == "att" && kind == "photo") 4.dp else 10.dp)) {
-                        if (!quote.isNullOrBlank()) QuoteLine(quote, message.outgoing)
-                        when (type) {
-                            "link" -> LinkBody(message, onLongPress, onOpenLink)
-                            "att" -> AttBody(
-                                message, ready, downloadFailed, progress,
-                                onLongPress, onOpenPhoto, onOpenExternal, onRetryDownload,
-                            )
-                            else -> TextBody(message, onLongPress)
+                    val media = type == "att" && (kind == "photo" || kind == "video")
+                    if (media) {
+                        Column {
+                            if (!quote.isNullOrBlank()) {
+                                QuoteLine(
+                                    quote,
+                                    message.outgoing,
+                                    Modifier.padding(start = 14.dp, end = 14.dp, top = 9.dp, bottom = 2.dp),
+                                )
+                            }
+                            Box(Modifier.padding(4.dp)) {
+                                AttBody(
+                                    message, ready, downloadFailed, progress,
+                                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                                    onOpenPhoto = { onOpenVisual(bubbleHolder[0]) },
+                                    onOpenExternal = onOpenExternal,
+                                    onRetryDownload = onRetryDownload,
+                                    insetMedia = true,
+                                )
+                            }
+                            val caption = message.json.optString("text")
+                            if (caption.isNotBlank()) {
+                                Text(
+                                    caption,
+                                    modifier = Modifier.padding(horizontal = 14.dp),
+                                    color = ChatTheme.ink(message.outgoing),
+                                )
+                            }
+                            Meta(message, Modifier.padding(start = 14.dp, end = 14.dp, bottom = 9.dp))
                         }
-                        Meta(message)
+                    } else {
+                        Column(
+                            Modifier
+                                .combinedClickable(
+                                    onClick = {},
+                                    onLongClick = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                                )
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                        ) {
+                            if (!quote.isNullOrBlank()) QuoteLine(quote, message.outgoing, Modifier)
+                            when (type) {
+                                "link" -> LinkBody(message, { onLongPress(rowHolder[0], bubbleHolder[0]) }, onOpenLink)
+                                "att" -> AttBody(
+                                    message, ready, downloadFailed, progress,
+                                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                                    onOpenPhoto = { onOpenVisual(bubbleHolder[0]) },
+                                    onOpenExternal = onOpenExternal,
+                                    onRetryDownload = onRetryDownload,
+                                    insetMedia = false,
+                                )
+                                else -> TextBody(message)
+                            }
+                            Meta(message, Modifier)
+                        }
                     }
                 }
             }
-            val emoji = message.json.optString("rx")
-            if (emoji.isNotEmpty()) {
-                Surface(
-                    shape = ChatTheme.chip,
-                    color = LdColors.colors.glassStrong,
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.padding(top = 2.dp),
+            if (type != "gone") {
+                ReactionRow(message, onToggleReaction)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Tombstone(message: ChatMessage, holder: Array<Rect>, onLongPress: () -> Unit) {
+    val label = stringResource(if (message.outgoing) R.string.chat_deleted_you else R.string.chat_deleted_them)
+    Surface(
+        shape = ChatTheme.bubble,
+        color = LdColors.colors.glassStrong,
+        border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+        shadowElevation = 0.dp,
+        modifier = Modifier
+            .widthIn(max = 280.dp)
+            .onGloballyPositioned { holder[0] = it.boundsInRoot() }
+            .combinedClickable(onClick = {}, onLongClick = onLongPress),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                color = LdColors.colors.inkMuted,
+            )
+            Text(
+                chatTime(message.ts),
+                style = MaterialTheme.typography.labelSmall,
+                color = LdColors.colors.inkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReactionRow(message: ChatMessage, onToggle: (String) -> Unit) {
+    val chips = ChatReactions.chips(message.json)
+    if (chips.isEmpty()) return
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.padding(top = 4.dp),
+    ) {
+        chips.forEach { (emoji, count) ->
+            val press = remember(emoji) { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Surface(
+                shape = ChatTheme.chip,
+                color = LdColors.colors.glassStrong,
+                border = BorderStroke(1.dp, LdColors.colors.glassBorder),
+                shadowElevation = 0.dp,
+                modifier = Modifier.pressScale(press),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .clickable(
+                            interactionSource = press,
+                            indication = androidx.compose.foundation.LocalIndication.current,
+                            onClick = { onToggle(emoji) },
+                        )
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Text(emoji, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.size(4.dp))
                     Text(
-                        emoji,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.bodyMedium,
+                        count.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LdColors.colors.inkMuted,
                     )
                 }
             }
@@ -221,12 +402,11 @@ fun ChatBubble(
 }
 
 @Composable
-private fun TextBody(message: ChatMessage, onLongPress: () -> Unit) {
+private fun TextBody(message: ChatMessage) {
     Text(
         message.json.optString("text"),
         color = if (message.outgoing) ChatTheme.onMine() else ChatTheme.onTheirs(),
         style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress),
     )
 }
 
@@ -237,6 +417,7 @@ private fun LinkBody(message: ChatMessage, onLongPress: () -> Unit, onOpenLink: 
     val desc = message.json.optString("desc")
     val text = message.json.optString("text")
     val host = hostOf(url)
+    val mediaShape = concentricShape(ChatTheme.bubbleRadius, 14.dp)
     Column(
         modifier = Modifier.combinedClickable(
             onClick = { if (url.isNotEmpty()) onOpenLink(url) },
@@ -253,7 +434,11 @@ private fun LinkBody(message: ChatMessage, onLongPress: () -> Unit, onOpenLink: 
         }
         val img = message.json.optString("img")
         if (img.isNotEmpty()) {
-            ThumbImage(img, Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(ChatTheme.bubble), stringResource(R.string.chat_photo_cd))
+            ThumbImage(
+                img,
+                Modifier.fillMaxWidth().heightIn(max = 160.dp).clip(mediaShape),
+                stringResource(R.string.chat_photo_cd),
+            )
             Spacer(Modifier.size(6.dp))
         }
         val ink = ChatTheme.ink(message.outgoing)
@@ -289,44 +474,63 @@ private fun AttBody(
     onOpenPhoto: () -> Unit,
     onOpenExternal: () -> Unit,
     onRetryDownload: () -> Unit,
+    insetMedia: Boolean,
 ) {
     val kind = message.json.optString("kind")
+    val mediaShape = if (insetMedia) {
+        RoundedCornerShape(LdRadius.inner(ChatTheme.bubbleRadius, 4.dp))
+    } else {
+        concentricShape(ChatTheme.bubbleRadius, 14.dp)
+    }
     when (kind) {
         "photo" -> Box(
             modifier = Modifier.combinedClickable(
-                onClick = { if (ready) onOpenPhoto() },
+                onClick = { onOpenPhoto() },
                 onLongClick = onLongPress,
             ),
         ) {
-            MediaVisual(message, ready, animate = false, Modifier.widthIn(max = ChatTheme.photoMax).heightIn(max = 320.dp), stringResource(R.string.chat_photo_cd))
+            MediaVisual(
+                message, ready, animate = false,
+                Modifier.widthIn(max = ChatTheme.photoMax).heightIn(max = 320.dp),
+                stringResource(R.string.chat_photo_cd),
+                mediaShape,
+            )
             DownloadOverlay(ready, downloadFailed, progress, onRetryDownload, Modifier.align(Alignment.Center))
         }
         "video" -> Box(
             modifier = Modifier.combinedClickable(
-                onClick = { if (ready) onOpenExternal() },
+                onClick = { onOpenPhoto() },
                 onLongClick = onLongPress,
             ),
         ) {
-            MediaVisual(message, ready, animate = false, Modifier.widthIn(max = ChatTheme.photoMax).heightIn(max = 220.dp), stringResource(R.string.chat_video_cd))
-            if (ready) {
-                Icon(
-                    Icons.Filled.PlayArrow,
+            MediaVisual(
+                message, ready, animate = false,
+                Modifier.widthIn(max = ChatTheme.photoMax).heightIn(max = 220.dp),
+                stringResource(R.string.chat_video_cd),
+                mediaShape,
+            )
+            if (ready || message.json.optString("thumb").isNotEmpty()) {
+                LuIcon(
+                    Lu.Play,
                     contentDescription = stringResource(R.string.chat_video_cd),
-                    modifier = Modifier.align(Alignment.Center).size(42.dp),
+                    modifier = Modifier.align(Alignment.Center),
                     tint = ChatTheme.viewerContent,
+                    size = 42.dp,
                 )
             }
             DownloadOverlay(ready, downloadFailed, progress, onRetryDownload, Modifier.align(Alignment.Center))
         }
         else -> FileBody(message, ready, downloadFailed, progress, onLongPress, onOpenExternal, onRetryDownload)
     }
-    val caption = message.json.optString("text")
-    if (caption.isNotBlank()) {
-        Text(
-            caption,
-            modifier = Modifier.padding(top = 4.dp),
-            color = if (message.outgoing) ChatTheme.onMine() else ChatTheme.onTheirs(),
-        )
+    if (!insetMedia) {
+        val caption = message.json.optString("text")
+        if (caption.isNotBlank()) {
+            Text(
+                caption,
+                modifier = Modifier.padding(top = 4.dp),
+                color = if (message.outgoing) ChatTheme.onMine() else ChatTheme.onTheirs(),
+            )
+        }
     }
 }
 
@@ -386,14 +590,20 @@ private fun BareImage(
     downloadFailed: Boolean,
     progress: Float?,
     onLongPress: () -> Unit,
+    onOpen: () -> Unit,
     onRetryDownload: () -> Unit,
+    onPosition: (Rect) -> Unit,
+    lit: Boolean,
 ) {
     val mime = message.json.optString("mime")
     val animate = mime == "image/gif" || mime == "image/webp"
     val desc = stringResource(if (message.json.optString("kind") == "gif") R.string.chat_gif_cd else R.string.chat_sticker_cd)
     Column(horizontalAlignment = if (message.outgoing) Alignment.End else Alignment.Start) {
         Box(
-            modifier = Modifier.combinedClickable(onClick = {}, onLongClick = onLongPress),
+            modifier = Modifier
+                .onGloballyPositioned { onPosition(it.boundsInRoot()) }
+                .then(if (lit) Modifier.border(2.dp, LdColors.white, RoundedCornerShape(2.dp)) else Modifier)
+                .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
         ) {
             MediaVisual(
                 message,
@@ -401,10 +611,11 @@ private fun BareImage(
                 animate,
                 Modifier.widthIn(max = ChatTheme.stickerMax).heightIn(max = ChatTheme.stickerMax),
                 desc,
+                corners = RoundedCornerShape(0.dp),
             )
             DownloadOverlay(ready, downloadFailed, progress, onRetryDownload, Modifier.align(Alignment.Center))
         }
-        Meta(message)
+        Meta(message, Modifier)
     }
 }
 
@@ -415,17 +626,38 @@ private fun MediaVisual(
     animate: Boolean,
     modifier: Modifier,
     desc: String,
+    corners: Shape = ChatTheme.bubble,
 ) {
+    val framed = modifier.clip(corners)
     if (ready) {
-        AttachmentVisual(message.id, animate, modifier, desc)
+        ChatFrame(message.id, animate, if (animate) 720 else 1080, framed, desc, ContentScale.Fit)
     } else {
         val thumb = message.json.optString("thumb")
         if (thumb.isNotEmpty()) {
-            ThumbImage(thumb, modifier, desc)
+            ThumbImage(thumb, framed, desc)
         } else {
-            Box(modifier.heightIn(min = 72.dp).widthIn(min = 96.dp))
+            Box(framed.heightIn(min = 72.dp).widthIn(min = 96.dp))
         }
     }
+}
+
+/** Still or animated attachment. Large stills are downsampled and cached. */
+@Composable
+fun ChatFrame(
+    id: String,
+    animate: Boolean,
+    maxEdge: Int,
+    modifier: Modifier,
+    desc: String,
+    scale: ContentScale = ContentScale.Fit,
+) {
+    val context = LocalContext.current
+    var bytes by remember(id) { mutableStateOf<ByteArray?>(null) }
+    LaunchedEffect(id) {
+        bytes = withContext(Dispatchers.IO) { ChatStore.readAttachment(context, id) }
+    }
+    val data = bytes ?: return
+    if (animate) AnimBytes(id, data, desc, modifier) else StillBytes(id, data, desc, modifier, maxEdge, scale)
 }
 
 @Composable
@@ -439,7 +671,11 @@ private fun DownloadOverlay(
     if (ready) return
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.padding(6.dp)) {
         if (failed) {
-            Text(stringResource(R.string.chat_download_failed), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(R.string.chat_download_failed),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
             TextButton(onClick = onRetry) { Text(stringResource(R.string.chat_download_retry)) }
         } else {
             val fraction = progress
@@ -453,8 +689,12 @@ private fun DownloadOverlay(
 }
 
 @Composable
-private fun Meta(message: ChatMessage) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End, modifier = Modifier.padding(top = 2.dp)) {
+private fun Meta(message: ChatMessage, modifier: Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End,
+        modifier = modifier.padding(top = 2.dp),
+    ) {
         Text(chatTime(message.ts), style = MaterialTheme.typography.labelSmall, color = ChatTheme.meta(message.outgoing))
         if (message.outgoing) {
             Spacer(Modifier.size(4.dp))
@@ -467,16 +707,16 @@ private fun Meta(message: ChatMessage) {
 private fun StatusTick(status: String, outgoing: Boolean) {
     val tint = ChatTheme.meta(outgoing)
     when (status) {
-        ChatStore.SENT -> Icon(
-            Icons.Filled.Check,
+        ChatStore.SENT -> LuIcon(
+            Lu.Check,
             contentDescription = stringResource(R.string.chat_status_sent),
-            modifier = Modifier.size(14.dp),
+            size = 14.dp,
             tint = tint,
         )
-        ChatStore.FAILED -> Icon(
-            Icons.Filled.Warning,
+        ChatStore.FAILED -> LuIcon(
+            Lu.TriangleAlert,
             contentDescription = stringResource(R.string.chat_status_failed),
-            modifier = Modifier.size(14.dp),
+            size = 14.dp,
             tint = if (outgoing) LdColors.white else MaterialTheme.colorScheme.error,
         )
         else -> Text(
@@ -488,28 +728,30 @@ private fun StatusTick(status: String, outgoing: Boolean) {
 }
 
 @Composable
-private fun AttachmentVisual(id: String, animate: Boolean, modifier: Modifier, desc: String) {
-    val context = LocalContext.current
-    var bytes by remember(id) { mutableStateOf<ByteArray?>(null) }
-    LaunchedEffect(id) {
-        bytes = withContext(Dispatchers.IO) { ChatStore.readAttachment(context, id) }
-    }
-    val data = bytes ?: return
-    if (animate) AnimBytes(id, data, desc, modifier) else StillBytes(id, data, desc, modifier)
-}
-
-@Composable
-private fun StillBytes(id: String, bytes: ByteArray, desc: String, modifier: Modifier) {
-    var bitmap by remember(id) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(id) {
-        bitmap = withContext(Dispatchers.IO) { ChatMedia.decodeForDisplay(bytes, 1080) }
+private fun StillBytes(
+    id: String,
+    bytes: ByteArray,
+    desc: String,
+    modifier: Modifier,
+    maxEdge: Int,
+    scale: ContentScale,
+) {
+    val key = "$id@$maxEdge"
+    var bitmap by remember(key) { mutableStateOf(stillCache.get(key)) }
+    LaunchedEffect(key) {
+        if (bitmap != null) return@LaunchedEffect
+        val decoded = withContext(Dispatchers.IO) { ChatMedia.decodeForDisplay(bytes, maxEdge) }
+        if (decoded != null) {
+            stillCache.put(key, decoded)
+            bitmap = decoded
+        }
     }
     val shown = bitmap ?: return
     Image(
         bitmap = shown.asImageBitmap(),
         contentDescription = desc,
-        modifier = modifier.clip(ChatTheme.bubble),
-        contentScale = ContentScale.Fit,
+        modifier = modifier,
+        contentScale = scale,
     )
 }
 
@@ -542,7 +784,6 @@ private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modi
     LaunchedEffect(id) {
         drawable = withContext(Dispatchers.IO) {
             try {
-                // ImageDecoder.createSource(ByteBuffer) is API 31. A cache file works from API 28.
                 val dir = File(context.cacheDir, "chat-anim")
                 if (!dir.exists() && !dir.mkdirs()) return@withContext null
                 val file = File(dir, "$id.img")
@@ -586,10 +827,10 @@ private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modi
 }
 
 @Composable
-private fun QuoteLine(text: String, outgoing: Boolean) {
+private fun QuoteLine(text: String, outgoing: Boolean, modifier: Modifier) {
     Text(
         text,
-        modifier = Modifier.padding(bottom = 4.dp),
+        modifier = modifier.padding(bottom = 4.dp),
         style = MaterialTheme.typography.labelMedium,
         color = ChatTheme.meta(outgoing),
         maxLines = 2,
@@ -619,26 +860,44 @@ private fun QuoteChip(text: String, outgoing: Boolean) {
 /**
  * Horizontal drag starts a reply. The gesture watches the initial pass and
  * does not consume the pointer, so a long-press and vertical scrolling still win.
+ * Release springs back. A new drag cancels that spring and continues from here.
  */
-private fun Modifier.swipeReply(onReply: () -> Unit, onDrag: (Float) -> Unit): Modifier {
-    return pointerInput(Unit) {
+private fun Modifier.swipeReply(
+    shift: Animatable<Float, AnimationVector1D>,
+    onReply: () -> Unit,
+): Modifier {
+    return pointerInput(onReply) {
         val threshold = 72.dp.toPx()
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            var total = 0f
-            var fired = false
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-                total += change.position.x - change.previousPosition.x
-                onDrag(total.coerceIn(-140f, 140f))
-                if (!fired && abs(total) >= threshold) {
-                    fired = true
-                    onReply()
+        val pointer = this
+        coroutineScope {
+            val scope = this
+            var settle: Job? = null
+            var track: Job? = null
+            pointer.awaitEachGesture {
+                settle?.cancel()
+                track?.cancel()
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                var total = shift.value
+                var fired = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    total = (total + change.position.x - change.previousPosition.x).coerceIn(-140f, 140f)
+                    val sample = total
+                    // awaitEachGesture cannot call snapTo; the outer scope can.
+                    track?.cancel()
+                    track = scope.launch { shift.snapTo(sample) }
+                    if (!fired && abs(total) >= threshold) {
+                        fired = true
+                        onReply()
+                    }
+                }
+                track?.cancel()
+                settle = scope.launch {
+                    if (Motion.enabled) shift.animateTo(0f, Motion.spring()) else shift.snapTo(0f)
                 }
             }
-            onDrag(0f)
         }
     }
 }

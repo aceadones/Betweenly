@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -17,15 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -40,9 +32,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import app.loviedowpie.ui.LdBottomBar
-import app.loviedowpie.ui.LdTab
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -51,8 +43,13 @@ import app.loviedowpie.ui.ActivityScreen
 import app.loviedowpie.ui.CameraScreen
 import app.loviedowpie.ui.ChatController
 import app.loviedowpie.ui.ChatScreen
+import app.loviedowpie.ui.DrawingStudioScreen
 import app.loviedowpie.ui.HomeScreen
+import app.loviedowpie.ui.LdBottomBar
+import app.loviedowpie.ui.LdTab
 import app.loviedowpie.ui.LoviedowpieTheme
+import app.loviedowpie.ui.Motion
+import app.loviedowpie.ui.MusicScreen
 import app.loviedowpie.ui.OnboardingScreen
 import app.loviedowpie.ui.PairScreen
 import app.loviedowpie.ui.PrivacyScreen
@@ -60,21 +57,22 @@ import app.loviedowpie.ui.ProfileScreen
 import app.loviedowpie.ui.TrackScreen
 import app.loviedowpie.ui.UiFlags
 import app.loviedowpie.ui.WidgetRefresh
+import app.loviedowpie.ui.icons.Lu
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
  * The only activity. Onboarding and pairing fill the window. After pairing,
- * a bottom bar switches Activity, Chat, Location, and Profile. The map and
- * the camera sit on top of that bar.
+ * a bottom dock switches Activity, Chat, Location, and Profile. The map,
+ * camera, drawing studio, and music screen sit above that dock.
  *
  * Widget and notification extras: `open=track`, `open=chat`, `open=activity`.
  * The V1 widget still sends `open=settings`; that opens Profile.
  *
- * Pulls the inbox on resume and every 5 seconds while this window is open,
- * so chat and drawings arrive without a wake ping. Live location uses the
- * same pull.
+ * Pulls the inbox on resume and every 5 seconds while this window is open
+ * (every 2 seconds while [AppState.fastPoll] is set). Chat, drawings, and
+ * live location use the same pull.
  */
 class MainActivity : ComponentActivity() {
     val routeEvent = mutableIntStateOf(0)
@@ -136,99 +134,110 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Gate { Onboarding, Pair, Main, Privacy }
+private enum class Screen {
+    Onboarding,
+    Pair,
+    Main,
+    Privacy,
+    Track,
+    Camera,
+    Drawing,
+    Music,
+}
 
 private enum class Tab { Activity, Chat, Location, Profile }
-
-private enum class Overlay { None, Track, Camera }
 
 @Composable
 private fun Root(startOpen: String?) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activity = context as MainActivity
     val initial = remember { startRoute(context, startOpen) }
-    var gateName by rememberSaveable { mutableStateOf(initial.gate.name) }
+    var screenName by rememberSaveable { mutableStateOf(initial.screen.name) }
     var tabName by rememberSaveable { mutableStateOf(initial.tab.name) }
-    var overlayName by rememberSaveable { mutableStateOf(initial.overlay.name) }
-    var privacyFrom by rememberSaveable { mutableStateOf(Gate.Onboarding.name) }
-    val gate = gateName.toGate()
+    var privacyFrom by rememberSaveable { mutableStateOf(Screen.Onboarding.name) }
+    val screen = screenName.toScreen()
     val tab = tabName.toTab()
-    val overlay = overlayName.toOverlay()
 
     val event = activity.routeEvent.intValue
     LaunchedEffect(event) {
         if (!Store.isPaired(context)) return@LaunchedEffect
         when (activity.route) {
             "track" -> {
-                gateName = Gate.Main.name
+                screenName = Screen.Track.name
                 tabName = Tab.Location.name
-                overlayName = Overlay.Track.name
             }
             "chat" -> {
-                gateName = Gate.Main.name
+                screenName = Screen.Main.name
                 tabName = Tab.Chat.name
-                overlayName = Overlay.None.name
             }
             "activity" -> {
-                gateName = Gate.Main.name
+                screenName = Screen.Main.name
                 tabName = Tab.Activity.name
-                overlayName = Overlay.None.name
             }
             // V1 widget. Profile replaced the settings screen.
             "settings" -> {
-                gateName = Gate.Main.name
+                screenName = Screen.Main.name
                 tabName = Tab.Profile.name
-                overlayName = Overlay.None.name
             }
         }
     }
 
     val revision by Store.changes.collectAsState()
-    LaunchedEffect(revision, gateName) {
+    LaunchedEffect(revision, screenName) {
         if (Store.isPaired(context)) return@LaunchedEffect
-        val current = gateName.toGate()
-        if (current == Gate.Onboarding || current == Gate.Pair || current == Gate.Privacy) return@LaunchedEffect
-        overlayName = Overlay.None.name
-        gateName = if (UiFlags.onboardingDone(context)) Gate.Pair.name else Gate.Onboarding.name
+        val current = screenName.toScreen()
+        if (current == Screen.Onboarding || current == Screen.Pair || current == Screen.Privacy) return@LaunchedEffect
+        screenName = if (UiFlags.onboardingDone(context)) Screen.Pair.name else Screen.Onboarding.name
     }
 
-    InboxPump(active = gate == Gate.Main)
+    InboxPump(
+        active = screen != Screen.Onboarding && screen != Screen.Pair && screen != Screen.Privacy,
+    )
 
-    val leaveOverlay = overlay != Overlay.None || gate == Gate.Privacy
-    BackHandler(enabled = leaveOverlay) {
-        when {
-            gate == Gate.Privacy -> gateName = privacyFrom
-            overlay == Overlay.Camera -> overlayName = Overlay.None.name
-            overlay == Overlay.Track -> overlayName = Overlay.None.name
+    val leave = screen == Screen.Privacy || screen == Screen.Camera || screen == Screen.Track ||
+        screen == Screen.Drawing || screen == Screen.Music
+    BackHandler(enabled = leave) {
+        screenName = if (screen == Screen.Privacy) privacyFrom else Screen.Main.name
+    }
+
+    val slidePx = with(LocalDensity.current) { 24.dp.roundToPx() }
+    AnimatedContent(
+        targetState = screen,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            if (screenForward(initialState, targetState)) Motion.screenEnter(slidePx)
+            else Motion.screenExit(slidePx)
+        },
+        label = "screen",
+    ) { current ->
+        when (current) {
+            Screen.Onboarding -> OnboardingScreen(
+                onDone = { screenName = Screen.Pair.name },
+                onPrivacy = {
+                    privacyFrom = Screen.Onboarding.name
+                    screenName = Screen.Privacy.name
+                },
+            )
+            Screen.Pair -> PairScreen(onPaired = { screenName = Screen.Main.name })
+            Screen.Privacy -> PrivacyScreen(onBack = { screenName = privacyFrom })
+            Screen.Track -> TrackScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Camera -> CameraRoute(onClose = { screenName = Screen.Main.name })
+            Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
+            Screen.Music -> MusicScreen(onClose = { screenName = Screen.Main.name })
+            Screen.Main -> MainShell(
+                tab = tab,
+                onTab = { tabName = it.name },
+                onTrack = { screenName = Screen.Track.name },
+                onCamera = { screenName = Screen.Camera.name },
+                onOpenDrawing = { screenName = Screen.Drawing.name },
+                onOpenMusic = { screenName = Screen.Music.name },
+                onPrivacy = {
+                    privacyFrom = Screen.Main.name
+                    screenName = Screen.Privacy.name
+                },
+                onUnpaired = { screenName = Screen.Pair.name },
+            )
         }
-    }
-
-    when {
-        gate == Gate.Onboarding -> OnboardingScreen(
-            onDone = { gateName = Gate.Pair.name },
-            onPrivacy = {
-                privacyFrom = Gate.Onboarding.name
-                gateName = Gate.Privacy.name
-            },
-        )
-        gate == Gate.Pair -> PairScreen(onPaired = { gateName = Gate.Main.name })
-        gate == Gate.Privacy -> PrivacyScreen(onBack = { gateName = privacyFrom })
-        overlay == Overlay.Track -> TrackScreen(onBack = { overlayName = Overlay.None.name })
-        overlay == Overlay.Camera -> CameraRoute(onClose = { overlayName = Overlay.None.name })
-        else -> MainShell(
-            tab = tab,
-            onTab = { tabName = it.name },
-            onTrack = { overlayName = Overlay.Track.name },
-            onCamera = { overlayName = Overlay.Camera.name },
-            onPrivacy = {
-                privacyFrom = Gate.Main.name
-                gateName = Gate.Privacy.name
-            },
-            onUnpaired = {
-                overlayName = Overlay.None.name
-                gateName = Gate.Pair.name
-            },
-        )
     }
 }
 
@@ -238,12 +247,15 @@ private fun MainShell(
     onTab: (Tab) -> Unit,
     onTrack: () -> Unit,
     onCamera: () -> Unit,
+    onOpenDrawing: () -> Unit,
+    onOpenMusic: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val unread by ChatStore.unreadCount.collectAsState()
     LaunchedEffect(Unit) { ChatStore.loadUnread(context) }
+    val tabSlide = with(LocalDensity.current) { 8.dp.roundToPx() }
     Scaffold(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing.only(
@@ -254,53 +266,58 @@ private fun MainShell(
                 tabs = listOf(
                     LdTab(
                         stringResource(R.string.tab_activity),
-                        Icons.Outlined.Edit,
-                        Icons.Filled.Edit,
+                        Lu.Layers,
                         tab == Tab.Activity,
                     ) { onTab(Tab.Activity) },
                     LdTab(
                         stringResource(R.string.tab_chat),
-                        Icons.Outlined.Email,
-                        Icons.Filled.Email,
+                        Lu.MessageCircle,
                         tab == Tab.Chat,
                         badge = if (tab == Tab.Chat) 0 else unread,
                     ) { onTab(Tab.Chat) },
                     LdTab(
                         stringResource(R.string.tab_location),
-                        Icons.Outlined.LocationOn,
-                        Icons.Filled.LocationOn,
+                        Lu.MapPin,
                         tab == Tab.Location,
                     ) { onTab(Tab.Location) },
                     LdTab(
                         stringResource(R.string.tab_profile),
-                        Icons.Outlined.Person,
-                        Icons.Filled.Person,
+                        Lu.User,
                         tab == Tab.Profile,
                     ) { onTab(Tab.Profile) },
                 ),
-                onCamera = onCamera,
-                cameraDescription = stringResource(R.string.tab_camera),
             )
         },
     ) { padding ->
-        Box(
-            Modifier
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier
                 .padding(padding)
                 .consumeWindowInsets(padding)
                 .fillMaxSize(),
-        ) {
-            when (tab) {
-                Tab.Activity -> ActivityScreen()
-                Tab.Chat -> ChatScreen(onOpenCamera = onCamera)
-                Tab.Location -> HomeScreen(onTrack = onTrack)
-                Tab.Profile -> ProfileScreen(onPrivacy = onPrivacy, onUnpaired = onUnpaired)
+            transitionSpec = {
+                val dir = if (targetState.ordinal >= initialState.ordinal) tabSlide else -tabSlide
+                Motion.tabTransition(dir)
+            },
+            label = "tab",
+        ) { current ->
+            Box(Modifier.fillMaxSize()) {
+                when (current) {
+                    Tab.Activity -> ActivityScreen(
+                        onOpenDrawing = onOpenDrawing,
+                        onOpenMusic = onOpenMusic,
+                    )
+                    Tab.Chat -> ChatScreen(onOpenCamera = onCamera)
+                    Tab.Location -> HomeScreen(onTrack = onTrack)
+                    Tab.Profile -> ProfileScreen(onPrivacy = onPrivacy, onUnpaired = onUnpaired)
+                }
             }
         }
     }
 }
 
 /**
- * Camera sits above the tab bar. A finished photo or video is handed to the
+ * Camera sits above the dock. A finished photo or video is handed to the
  * chat task. [ChatController.sendMedia] lives in that task's file.
  */
 @Composable
@@ -325,8 +342,8 @@ private fun CameraRoute(onClose: () -> Unit) {
 }
 
 /**
- * Pulls the inbox on resume and every 5 seconds while the paired window is
- * open. Live updates are not pushed, and neither are drawings or chat.
+ * Pulls the inbox on resume and on a timer while the paired window is open.
+ * The timer is 5 seconds, or 2 seconds while [AppState.fastPoll] is true.
  * The loop runs only while this activity is resumed.
  */
 @Composable
@@ -366,10 +383,16 @@ private fun InboxPump(active: Boolean) {
     }
     LaunchedEffect(shouldPoll) {
         if (!shouldPoll) return@LaunchedEffect
+        var elapsed = 0L
         while (isActive) {
-            delay(5_000)
+            delay(1_000)
+            elapsed += 1_000
             if (!Store.isPaired(context)) return@LaunchedEffect
-            pullInbox(context)
+            val period = if (AppState.fastPoll) 2_000L else 5_000L
+            if (elapsed >= period) {
+                elapsed = 0L
+                pullInbox(context)
+            }
         }
     }
 }
@@ -385,12 +408,12 @@ private suspend fun pullInbox(context: android.content.Context) {
     }
 }
 
-private data class Start(val gate: Gate, val tab: Tab, val overlay: Overlay)
+private data class Start(val screen: Screen, val tab: Tab)
 
 private fun startRoute(context: android.content.Context, open: String?): Start {
     if (!Store.isPaired(context)) {
-        val gate = if (UiFlags.onboardingDone(context)) Gate.Pair else Gate.Onboarding
-        return Start(gate, Tab.Location, Overlay.None)
+        val screen = if (UiFlags.onboardingDone(context)) Screen.Pair else Screen.Onboarding
+        return Start(screen, Tab.Location)
     }
     val tab = when (open) {
         "chat" -> Tab.Chat
@@ -398,24 +421,28 @@ private fun startRoute(context: android.content.Context, open: String?): Start {
         "settings" -> Tab.Profile
         else -> Tab.Location
     }
-    val overlay = if (open == "track") Overlay.Track else Overlay.None
-    return Start(Gate.Main, tab, overlay)
+    val screen = if (open == "track") Screen.Track else Screen.Main
+    return Start(screen, tab)
 }
 
-private fun String.toGate(): Gate = try {
-    Gate.valueOf(this)
+private fun screenForward(from: Screen, to: Screen): Boolean {
+    fun depth(screen: Screen) = when (screen) {
+        Screen.Onboarding -> 0
+        Screen.Pair -> 1
+        Screen.Main -> 2
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.Music -> 3
+    }
+    return depth(to) >= depth(from)
+}
+
+private fun String.toScreen(): Screen = try {
+    Screen.valueOf(this)
 } catch (_: IllegalArgumentException) {
-    Gate.Main
+    Screen.Main
 }
 
 private fun String.toTab(): Tab = try {
     Tab.valueOf(this)
 } catch (_: IllegalArgumentException) {
     Tab.Location
-}
-
-private fun String.toOverlay(): Overlay = try {
-    Overlay.valueOf(this)
-} catch (_: IllegalArgumentException) {
-    Overlay.None
 }

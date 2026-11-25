@@ -10,7 +10,10 @@ import androidx.compose.ui.unit.dp
  * so a later visual pass can retune the theme in one place.
  */
 object ChatTheme {
-    val bubble = RoundedCornerShape(22.dp)
+    /** Outer bubble corner. Media inset 4dp uses [LdRadius.inner] so the inner corner is 16dp. */
+    val bubbleRadius = 20.dp
+    val bubble = RoundedCornerShape(bubbleRadius)
+    val composerRadius = 28.dp
     val chip = RoundedCornerShape(50)
     val swatch = RoundedCornerShape(12.dp)
     val photoMax = 260.dp

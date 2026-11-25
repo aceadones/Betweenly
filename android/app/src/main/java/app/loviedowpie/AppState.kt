@@ -16,4 +16,11 @@ object AppState {
      */
     @Volatile
     var chatOpen: Boolean = false
+
+    /**
+     * While true, [MainActivity] pulls the inbox every 2 seconds instead of 5.
+     * Music sessions set this. It carries no message contents.
+     */
+    @Volatile
+    var fastPoll: Boolean = false
 }

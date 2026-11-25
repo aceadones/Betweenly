@@ -4,7 +4,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +20,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
@@ -34,34 +29,33 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.Shapes
 import app.loviedowpie.R
+import app.loviedowpie.Store
+import app.loviedowpie.ui.icons.Lu
+import app.loviedowpie.ui.icons.LuIcon
 import java.time.Instant
 import java.time.ZoneId
 
@@ -232,11 +226,26 @@ private val AppType = Typography(
     labelSmall = BaseType.labelSmall.copy(fontWeight = FontWeight.Medium),
 )
 
+/** Display, Title, Body, and Caption. Sizes come from the existing font. */
+object LdType {
+    val Display: TextStyle
+        @Composable get() = MaterialTheme.typography.headlineLarge
+
+    val Title: TextStyle
+        @Composable get() = MaterialTheme.typography.titleMedium
+
+    val Body: TextStyle
+        @Composable get() = MaterialTheme.typography.bodyLarge
+
+    val Caption: TextStyle
+        @Composable get() = MaterialTheme.typography.bodySmall
+}
+
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(12.dp),
     small = RoundedCornerShape(16.dp),
     medium = RoundedCornerShape(24.dp),
-    large = RoundedCornerShape(28.dp),
+    large = RoundedCornerShape(LdRadius.card),
     extraLarge = RoundedCornerShape(32.dp),
 )
 
@@ -304,6 +313,9 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun LoviedowpieTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val animationsOn = Store.animationsFlow(context).collectAsState().value
+    Motion.bind(animationsOn)
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
         typography = AppType,
@@ -316,10 +328,16 @@ fun LoviedowpieTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** Soft sky (or navy) gradient plus a few cloud blobs. No blur. */
+/**
+ * Sky gradient, soft blobs, and a static doodle tile.
+ * The doodle is drawn once into a bitmap and painted at a very low alpha.
+ */
 @Composable
 fun AppBackground(modifier: Modifier = Modifier) {
     val c = LdColors.colors
+    val dark = isSystemInDarkTheme()
+    val tile = remember(dark) { doodleTile(dark) }
+    val doodleAlpha = if (dark) 0.08f else 0.07f
     Box(
         modifier
             .fillMaxSize()
@@ -329,19 +347,42 @@ fun AppBackground(modifier: Modifier = Modifier) {
             drawCircle(c.blobA, radius = size.minDimension * 0.62f, center = Offset(size.width * 0.08f, size.height * 0.06f))
             drawCircle(c.blobB, radius = size.minDimension * 0.48f, center = Offset(size.width * 0.98f, size.height * 0.20f))
             drawCircle(c.blobC, radius = size.minDimension * 0.72f, center = Offset(size.width * 0.40f, size.height * 0.82f))
+            val tw = tile.width.toFloat()
+            val th = tile.height.toFloat()
+            if (tw > 1f && th > 1f) {
+                var y = 0f
+                while (y < size.height) {
+                    var x = 0f
+                    while (x < size.width) {
+                        drawImage(tile, topLeft = Offset(x, y), alpha = doodleAlpha)
+                        x += tw
+                    }
+                    y += th
+                }
+            }
         }
     }
 }
 
 @Composable
-fun Modifier.ldGlass(shape: Shape = RoundedCornerShape(28.dp), strong: Boolean = false): Modifier {
+fun Modifier.ldGlass(
+    shape: Shape = RoundedCornerShape(LdRadius.card),
+    strong: Boolean = false,
+    solid: Boolean = false,
+): Modifier {
     val c = LdColors.colors
-    val fill = if (strong) c.glassStrong else c.glass
+    val fill = when {
+        // Menu fill is nearly opaque, so ink stays AA on top of a photo or a light wallpaper.
+        solid -> c.menu
+        strong -> c.glassStrong
+        else -> c.glass
+    }
+    val stroke = if (solid) c.menuBorder else c.glassBorder
     return this
         .shadow(elevation = 10.dp, shape = shape, ambientColor = c.shadow, spotColor = c.shadow)
         .clip(shape)
         .background(fill)
-        .border(width = 1.dp, color = c.glassBorder, shape = shape)
+        .border(width = 1.dp, color = stroke, shape = shape)
 }
 
 /** Mostly opaque popup surface: theme menu fill plus a thin border. */
@@ -359,16 +400,24 @@ fun PrimaryPill(
     enabled: Boolean = true,
 ) {
     val c = LdColors.colors
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(LdRadius.chip)
+    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier
+            .pressScale(interaction)
             .heightIn(min = 60.dp)
             .alpha(if (enabled) 1f else 0.42f)
             .shadow(elevation = 8.dp, shape = shape, ambientColor = c.shadow, spotColor = c.shadow)
             .clip(shape)
             .background(c.pill)
             .border(1.dp, c.pillBorder, shape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -376,7 +425,7 @@ fun PrimaryPill(
             Modifier.size(48.dp).clip(CircleShape).background(c.knob),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = c.onKnob)
+            LuIcon(Lu.ArrowRight, contentDescription = null, tint = c.onKnob)
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Text(
@@ -400,13 +449,21 @@ fun SecondaryPill(
     enabled: Boolean = true,
 ) {
     val c = LdColors.colors
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(LdRadius.chip)
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
+            .pressScale(interaction)
             .heightIn(min = 48.dp)
             .alpha(if (enabled) 1f else 0.42f)
             .ldGlass(shape, strong = true)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
             .padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -428,14 +485,21 @@ fun GlassIconButton(
     modifier: Modifier = Modifier,
 ) {
     val c = LdColors.colors
+    val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
-            .size(44.dp)
+            .pressScale(interaction)
+            .size(48.dp)
             .ldGlass(CircleShape, strong = true)
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(
+                interactionSource = interaction,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = c.ink)
+        LuIcon(icon, contentDescription = description, tint = c.ink)
     }
 }
 
@@ -444,8 +508,8 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
     val c = LdColors.colors
     Column(
         modifier
-            .ldGlass(RoundedCornerShape(20.dp))
-            .padding(horizontal = 10.dp, vertical = 12.dp),
+            .ldGlass(RoundedCornerShape(LdRadius.tile))
+            .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
@@ -471,12 +535,7 @@ fun VerifiedDot() {
         Modifier.size(18.dp).clip(CircleShape).background(LdColors.primary),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Icons.Filled.Check,
-            contentDescription = null,
-            tint = LdColors.white,
-            modifier = Modifier.size(12.dp),
-        )
+        LuIcon(Lu.Check, contentDescription = null, tint = LdColors.white, size = 12.dp)
     }
 }
 
@@ -521,166 +580,76 @@ private fun greetingPhrase(): String {
     return stringResource(id)
 }
 
-data class LdTab(
-    val label: String,
-    val outlined: ImageVector,
-    val filled: ImageVector,
-    val selected: Boolean,
-    val badge: Int = 0,
-    val onClick: () -> Unit,
-)
-
-/** Floating glass bar, four tabs, and a center camera orb between tab 2 and 3. */
-@Composable
-fun LdBottomBar(
-    tabs: List<LdTab>,
-    onCamera: () -> Unit,
-    cameraDescription: String,
-) {
-    val shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars),
-    ) {
-        Box(
-            Modifier
-                .padding(top = 22.dp)
-                .fillMaxWidth()
-                .height(72.dp)
-                .ldGlass(shape, strong = true),
-        )
-        Row(
-            Modifier
-                .padding(top = 22.dp)
-                .fillMaxWidth()
-                .height(72.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            tabs.forEachIndexed { index, tab ->
-                if (index == 2) Spacer(Modifier.width(72.dp))
-                LdTabItem(tab, Modifier.weight(1f))
-            }
-        }
-        CameraOrb(
-            onClick = onCamera,
-            description = cameraDescription,
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
+private fun doodleTile(dark: Boolean): ImageBitmap {
+    val size = 480
+    val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val ink = if (dark) 0xFFFFFFFF.toInt() else 0xFF0A1F44.toInt()
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 2.4f
+        strokeCap = android.graphics.Paint.Cap.ROUND
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        color = ink
     }
+    val dot = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.FILL
+        color = ink
+    }
+    val rnd = java.util.Random(0x10F1ED0DL)
+    val margin = 28f
+    repeat(22) {
+        val x = margin + rnd.nextFloat() * (size - margin * 2f)
+        val y = margin + rnd.nextFloat() * (size - margin * 2f)
+        val s = 12f + rnd.nextFloat() * 14f
+        when (rnd.nextInt(5)) {
+            0 -> doodleHeart(canvas, paint, x, y, s)
+            1 -> doodleCloud(canvas, paint, x, y, s)
+            2 -> doodleStar(canvas, paint, x, y, s)
+            3 -> doodlePlane(canvas, paint, x, y, s)
+            else -> canvas.drawCircle(x, y, 2.2f, dot)
+        }
+    }
+    return bitmap.asImageBitmap()
 }
 
-@Composable
-private fun LdTabItem(tab: LdTab, modifier: Modifier) {
-    val c = LdColors.colors
-    val tint = if (tab.selected) c.ink else c.navIdle
-    val spoken = if (tab.badge > 0) stringResource(R.string.tab_unread, tab.label, tab.badge) else tab.label
-    Column(
-        modifier
-            .height(64.dp)
-            .semantics {
-                selected = tab.selected
-                contentDescription = spoken
-            }
-            .clickable(role = Role.Tab, onClick = tab.onClick)
-            .padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        val icon = @Composable {
-            Icon(
-                imageVector = if (tab.selected) tab.filled else tab.outlined,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(24.dp),
-            )
-        }
-        if (tab.badge > 0) {
-            BadgedBox(
-                badge = {
-                    Badge(
-                        containerColor = LdColors.heart,
-                        contentColor = LdColors.white,
-                    ) {
-                        Text(if (tab.badge > 99) "99+" else tab.badge.toString())
-                    }
-                },
-            ) {
-                icon()
-            }
-        } else {
-            icon()
-        }
-        Spacer(Modifier.height(2.dp))
-        Text(
-            tab.label,
-            color = tint,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (tab.selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+private fun doodleHeart(canvas: android.graphics.Canvas, paint: android.graphics.Paint, x: Float, y: Float, s: Float) {
+    val path = android.graphics.Path()
+    path.moveTo(x, y + s * 0.35f)
+    path.cubicTo(x - s, y - s * 0.45f, x - s * 0.2f, y - s * 0.95f, x, y - s * 0.25f)
+    path.cubicTo(x + s * 0.2f, y - s * 0.95f, x + s, y - s * 0.45f, x, y + s * 0.35f)
+    canvas.drawPath(path, paint)
 }
 
-@Composable
-fun CameraOrb(onClick: () -> Unit, description: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .size(64.dp)
-            .shadow(12.dp, CircleShape, ambientColor = LdColors.navy, spotColor = LdColors.navy)
-            .clip(CircleShape)
-            .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color(0xFF1E4FBE), Color(0xFF0A1F44), Color(0xFF05070C)),
-                        center = center,
-                        radius = size.minDimension * 0.72f,
-                    ),
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(LdColors.white.copy(alpha = 0.92f), Color.Transparent),
-                        center = Offset(size.width * 0.36f, size.height * 0.28f),
-                        radius = size.minDimension * 0.26f,
-                    ),
-                )
-            }
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            OrbCamera,
-            contentDescription = description,
-            tint = LdColors.white,
-            modifier = Modifier.size(28.dp),
-        )
-    }
+private fun doodleCloud(canvas: android.graphics.Canvas, paint: android.graphics.Paint, x: Float, y: Float, s: Float) {
+    val path = android.graphics.Path()
+    path.moveTo(x - s * 0.7f, y + s * 0.15f)
+    path.cubicTo(x - s, y - s * 0.15f, x - s * 0.35f, y - s * 0.7f, x, y - s * 0.25f)
+    path.cubicTo(x + s * 0.15f, y - s * 0.85f, x + s * 0.9f, y - s * 0.35f, x + s * 0.55f, y + s * 0.15f)
+    path.cubicTo(x + s * 0.95f, y + s * 0.45f, x + s * 0.2f, y + s * 0.55f, x - s * 0.15f, y + s * 0.2f)
+    canvas.drawPath(path, paint)
 }
 
-private val OrbCamera: ImageVector = ImageVector.Builder(
-    name = "OrbCamera",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).apply {
-    path(fill = SolidColor(LdColors.white), pathFillType = PathFillType.EvenOdd) {
-        moveTo(9f, 4f)
-        lineTo(7.2f, 6.2f)
-        horizontalLineTo(4.2f)
-        curveTo(3f, 6.2f, 2f, 7.2f, 2f, 8.4f)
-        verticalLineTo(18f)
-        curveTo(2f, 19.2f, 3f, 20.2f, 4.2f, 20.2f)
-        horizontalLineTo(19.8f)
-        curveTo(21f, 20.2f, 22f, 19.2f, 22f, 18f)
-        verticalLineTo(8.4f)
-        curveTo(22f, 7.2f, 21f, 6.2f, 19.8f, 6.2f)
-        horizontalLineTo(16.8f)
-        lineTo(15f, 4f)
-        close()
-        moveTo(12f, 9.2f)
-        arcTo(3.4f, 3.4f, 0f, true, true, 11.99f, 9.2f)
-        close()
-    }
-}.build()
+private fun doodleStar(canvas: android.graphics.Canvas, paint: android.graphics.Paint, x: Float, y: Float, s: Float) {
+    val path = android.graphics.Path()
+    path.moveTo(x, y - s)
+    path.lineTo(x + s * 0.22f, y - s * 0.22f)
+    path.lineTo(x + s, y)
+    path.lineTo(x + s * 0.22f, y + s * 0.22f)
+    path.lineTo(x, y + s)
+    path.lineTo(x - s * 0.22f, y + s * 0.22f)
+    path.lineTo(x - s, y)
+    path.lineTo(x - s * 0.22f, y - s * 0.22f)
+    path.close()
+    canvas.drawPath(path, paint)
+}
+
+private fun doodlePlane(canvas: android.graphics.Canvas, paint: android.graphics.Paint, x: Float, y: Float, s: Float) {
+    val path = android.graphics.Path()
+    path.moveTo(x - s * 0.8f, y + s * 0.15f)
+    path.lineTo(x + s * 0.85f, y - s * 0.55f)
+    path.lineTo(x - s * 0.05f, y - s * 0.05f)
+    path.close()
+    canvas.drawPath(path, paint)
+    canvas.drawLine(x - s * 0.05f, y - s * 0.05f, x + s * 0.2f, y + s * 0.5f, paint)
+}

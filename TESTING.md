@@ -392,15 +392,19 @@ Same switch, using `photo` and `sticker` from the desktop tool. Check the emulat
 
 ### Phones
 
-1. Chat settings. Pick a color, then the default, then a photo. Send a message on top of each.
+1. Chat menu, Chat background. Pick a color, then the default, then a photo. Send a message on top of each.
+2. On the other phone, leave Chat open.
 
-Expected: the chat background changes immediately. Text stays readable. A failed photo shows an error and leaves the previous wallpaper. The choice is still there after restart.
+Expected: both phones show the same background. The later choice wins. Text on the header, the empty state, and the bubbles stays readable in light and dark. A failed photo shows an error and leaves the previous wallpaper. The choice is still there after restart.
 
 - [ ] Pass
 
 ### Emulator
 
-Same three choices on the emulator. The desktop tool is not involved.
+1. Same three choices on the emulator.
+2. Desktop: `wall color 3`, then `wall color 9`, then `wall color`.
+
+Expected: color 3 appears on the emulator (the fourth swatch, counting from zero). `9` and a bare `wall` print usage and do not change the background. The tool does not send a photo wallpaper.
 
 - [ ] Pass
 
@@ -408,18 +412,21 @@ Same three choices on the emulator. The desktop tool is not involved.
 
 ### Phones
 
-1. Long-press your message and the partner's message. Confirm six choices: heart, laugh, thumbs up, surprised, sad, folded hands.
-2. Set one on each. Change one.
+1. Long-press your message and the partner's message. Confirm seven shortcuts: heart, laugh, surprised, sad, folded hands, thumbs up, fire.
+2. Set one on each. Tap the same emoji again.
+3. Long-press, choose the edit control, replace one shortcut from the emoji sheet, and tap Done. React with the new one.
 
-Expected: the emoji sits under that bubble on both phones. A later reaction replaces the previous one. No extra notification text beyond "New message" if the app is backgrounded.
+Expected: the emoji sits under that bubble on both phones. Tapping the same emoji again clears that person's reaction. A later different emoji replaces it. The new shortcut is still there after leaving Chat. No extra notification text beyond "New message" if the app is backgrounded.
 
 - [ ] Pass
 
 ### Emulator
 
-The desktop tool does not send reactions. On the emulator, long-press a `chat` line from the tool and react.
+1. From the emulator, send a short line. The tool prints `RECEIVED` with that message's `"id"`.
+2. Desktop: `react <id> 👍` with that 16-character id. Then the same command again. Then `react zz 👍`.
+3. On the emulator, long-press the desktop `chat` line and react.
 
-Expected: the chip appears under that bubble. The tool prints `RECEIVED` with `"t":"react"` and the same id.
+Expected: the first `react` adds the chip. The second clears it. A bad id prints usage and sends nothing. The tool prints `RECEIVED` with `"t":"react"` when the emulator reacts.
 
 - [ ] Pass
 
@@ -449,11 +456,12 @@ Expected: the emulator shows the quote. The tool prints `"re"` on the received J
 
 ### Phones
 
-1. On Activity, draw a stroke, undo, clear, and draw again. Toggle white paper.
-2. Save. Send to partner.
-3. On the other phone, open Activity without tapping send.
+1. Open Activity, then the draw card. Draw a stroke. Undo, redo, and clear. Change paper.
+2. Open the brush sheet and try solid, eraser, and one other brush. Open color, size, and opacity.
+3. Save. Send to partner.
+4. On the other phone, open Activity without tapping send.
 
-Expected: the partner sees the drawing without a chat-style message. Save keeps a thumbnail on Profile. Send failure (airplane mode) shows an error and keeps the canvas. Undo and clear do what they say.
+Expected: the studio opens from the card, not from the dock. The partner's Activity card shows the drawing without a chat-style message. Save keeps a thumbnail on Profile. Send failure (airplane mode) shows an error and keeps the canvas. Undo, redo, and clear do what they say. Closing with unsaved strokes asks before discarding.
 
 - [ ] Pass
 
@@ -515,6 +523,125 @@ The desktop tool is not part of this check. Repeat the check once on the emulato
 
 - [ ] Pass
 
+## Activity hub
+
+### Phones
+
+1. Open Activity. Confirm two cards: Draw together, and Hear music together. There is no camera card.
+2. Before any drawing arrives, look at the Draw together picture. It is a small white sheet with one stroke.
+3. After the partner sends a drawing, come back to Activity.
+4. Tap Open on each card, then come back.
+
+Expected: the first card shows the partner's drawing in place of the placeholder. The music card does not play anything until its screen is open. Tapping a card opens that screen and does not change the other card.
+
+- [ ] Pass
+
+### Emulator
+
+Desktop: `draw <file.png>`. On the emulator, open Activity.
+
+Expected: the Draw together card shows that picture. The desktop tool has no Activity screen.
+
+- [ ] Pass
+
+## Dock
+
+### Phones
+
+1. After pairing, look at the bar along the bottom.
+2. Tap Activity, Chat, Location, and Profile.
+3. Confirm there is no camera tab. Open the camera from Chat, plus, Camera.
+
+Expected: exactly four tabs. The camera is a full-screen page over the dock, not a fifth tab. Switching tabs does not drop the pair. The Chat badge still clears when Chat is open.
+
+- [ ] Pass
+
+### Emulator
+
+Same four tabs. The desktop tool is not involved.
+
+- [ ] Pass
+
+## Reduce animations
+
+### Phones
+
+1. Profile, Appearance, turn Reduce animations on.
+2. Switch tabs, open a chat menu, open the drawing studio, then turn the switch off and open the chat menu again.
+
+Expected: with the switch on, those moves appear at once. With it off, menus grow from the button that opened them. Typing in the composer does not animate. The switch stays after you leave Profile and after unpair.
+
+- [ ] Pass
+
+### Emulator
+
+Same switch. The desktop tool is not involved.
+
+- [ ] Pass
+
+## Unsend
+
+### Phones
+
+1. Send a message. Long-press it and choose Unsend.
+2. Long-press a partner message and confirm Unsend is not offered. Delete for me is.
+3. Turn the network off and unsend one of yours. Turn it back on and open Chat again.
+
+Expected: both phones show a deleted line and not the old text. The partner keeps their own copy only until the unsend arrives. A failed unsend shows an error and tries again the next time Chat opens. Airplane mode does not crash.
+
+- [ ] Pass
+
+### Emulator
+
+1. From the emulator, send a line. The tool prints `RECEIVED` with that line's `"id"`.
+2. Desktop: `unsend <that id>`.
+3. Desktop: `chat hello`, then `unsend no`.
+
+Expected: step 2 does nothing on the emulator. A partner cannot unsend a message this phone sent. `unsend` does not wake. A bad id prints usage and sends nothing. `chat` does not print the id it just made, so the tool cannot easily unsend its own line unless you already have that 16-character id. Phone-to-phone is the check that both sides drop the sender's message.
+
+- [ ] Pass
+
+## Scroll to latest, viewer, and plus menu
+
+### Phones
+
+1. Send enough messages to scroll. Scroll up. Tap the down control.
+2. Receive a message while you are scrolled up. Then scroll back to the latest.
+3. Open a photo in the viewer. Save it, share it, and close it. Open a video and tap play.
+4. Tap plus. Gallery, Camera, and File are the three rows. Dismiss the menu by tapping outside.
+
+Expected: the down control jumps to the newest message without a long glide. A count shows when new messages arrive while you are away from the bottom. The viewer opens from the bubble and closes back. Save and share fail with a message if nothing can do them, and the app stays up. Plus does not include a dock camera tab. The keyboard opening does not play a scroll animation.
+
+- [ ] Pass
+
+### Emulator
+
+1. Desktop: `photo <file.jpg>`. Open it in the viewer.
+2. Desktop: `chat one` while the list is scrolled up.
+
+Expected: the photo opens. The jump control appears. The tool has no viewer of its own.
+
+- [ ] Pass
+
+## Hear together
+
+### Phones
+
+1. Activity, then the Hear music together card. Deny music permission once, then allow it. The screen title is Hear together.
+2. Play a song that is already on the phone. Pause, seek, skip, shuffle, and repeat.
+3. Invite the partner. On the other phone, open Hear together and accept. Pause on one phone. Leave on the other.
+4. Try a song larger than 20 MB if you have one.
+
+Expected: playback stays on this screen. Leaving the screen stops the audio. There is no ongoing playback notice. The partner can join only while their music screen is open. An invite while that screen is closed shows "Listen together?" and opens Activity, not the player. A song over 20 MB does not upload. Airplane mode shows a failure and does not crash. Denying permission leaves the library empty.
+
+- [ ] Pass
+
+### Emulator
+
+Local playback can be checked on the emulator if it has an audio file and you allow the permission. The desktop tool cannot invite, accept, play, or seek. It will print `RECEIVED` with `"t":"music"` if the emulator invites, and it will not start audio. Mark the two-phone session phone-only when the desktop is the partner.
+
+- [ ] Pass
+
 ## Unpair
 
 ### Phones
@@ -522,7 +649,7 @@ The desktop tool is not part of this check. Repeat the check once on the emulato
 1. Note your name, photo, and notification switches.
 2. Unpair from Profile and confirm.
 
-Expected: the app returns to pairing (or onboarding if that was never finished). Chat, drawings, partner location, and the safety number for that pair are gone. Your name, photo, and notification switches are still there. The partner's next message does not appear. Widgets show the unpaired hint instead of crashing.
+Expected: the app returns to pairing (or onboarding if that was never finished). Chat, drawings, partner location, the shared background, and the safety number for that pair are gone. Your name, photo, notification switches, and Reduce animations choice are still there. The partner's next message does not appear. Widgets show the unpaired hint instead of crashing.
 
 - [ ] Pass
 

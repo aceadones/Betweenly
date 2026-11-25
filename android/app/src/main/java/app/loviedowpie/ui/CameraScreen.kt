@@ -1,7 +1,5 @@
 package app.loviedowpie.ui
 
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.Icons
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -24,7 +22,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -66,6 +67,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.loviedowpie.CameraCaps
 import app.loviedowpie.R
+import app.loviedowpie.ui.icons.Lu
 import java.io.File
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -201,7 +203,7 @@ private fun CameraPermission(
         RoundIconButton(
             onClick = onClose,
             description = stringResource(R.string.camera_close),
-            icon = Icons.Filled.Close,
+            icon = Lu.X,
         )
         Spacer(Modifier.height(12.dp))
         Text(
@@ -224,8 +226,15 @@ private fun CameraPermission(
             )
         }
         Spacer(Modifier.height(24.dp))
+        val settingsPress = remember { MutableInteractionSource() }
+        val allowPress = remember { MutableInteractionSource() }
         if (permanent) {
-            Button(onClick = { openAppSettings(context, settings::launch) }) {
+            Button(
+                onClick = { openAppSettings(context, settings::launch) },
+                shape = RoundedCornerShape(LdRadius.chip),
+                interactionSource = settingsPress,
+                modifier = Modifier.heightIn(min = 48.dp).pressScale(settingsPress),
+            ) {
                 Text(stringResource(R.string.perm_settings))
             }
         } else {
@@ -238,6 +247,9 @@ private fun CameraPermission(
                         openAppSettings(context, settings::launch)
                     }
                 },
+                shape = RoundedCornerShape(LdRadius.chip),
+                interactionSource = allowPress,
+                modifier = Modifier.heightIn(min = 48.dp).pressScale(allowPress),
             ) {
                 Text(stringResource(R.string.perm_allow))
             }
@@ -421,7 +433,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                     RoundIconButton(
                         onClick = onClose,
                         description = stringResource(R.string.camera_close),
-                        icon = Icons.Filled.Close,
+                        icon = Lu.X,
                     )
                 }
             }
@@ -504,6 +516,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
         AlertDialog(
             onDismissRequest = { askAudio = false },
             modifier = Modifier.ldPopupFrame(),
+            shape = MaterialTheme.shapes.extraLarge,
             containerColor = LdColors.colors.menu,
             tonalElevation = 0.dp,
             titleContentColor = LdColors.colors.ink,
@@ -572,7 +585,7 @@ private fun CameraNotice(
         RoundIconButton(
             onClick = onClose,
             description = stringResource(R.string.camera_close),
-            icon = Icons.Filled.Close,
+            icon = Lu.X,
         )
         Column(
             Modifier.align(Alignment.Center).padding(24.dp),

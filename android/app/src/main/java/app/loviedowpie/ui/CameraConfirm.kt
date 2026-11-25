@@ -1,13 +1,12 @@
 package app.loviedowpie.ui
 
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.Icons
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.VideoView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,13 +28,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
@@ -45,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.loviedowpie.R
+import app.loviedowpie.ui.icons.Lu
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -71,7 +72,7 @@ internal fun CameraConfirm(
             RoundIconButton(
                 onClick = onClose,
                 description = stringResource(R.string.camera_close),
-                icon = Icons.Filled.Close,
+                icon = Lu.X,
             )
         }
         Box(
@@ -91,21 +92,24 @@ internal fun CameraConfirm(
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val retakePress = remember { MutableInteractionSource() }
+            val sendPress = remember { MutableInteractionSource() }
             OutlinedButton(
                 onClick = onRetake,
                 enabled = sendEnabled,
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(LdRadius.chip),
+                interactionSource = retakePress,
                 border = BorderStroke(
-                    1.5.dp,
-                    if (sendEnabled) LdColors.cameraContent else LdColors.cameraFaint,
+                    1.dp,
+                    Color.White.copy(alpha = if (sendEnabled) 0.5f else 0.2f),
                 ),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = LdColors.clear,
+                    containerColor = Color.White.copy(alpha = 0.18f),
                     contentColor = LdColors.cameraContent,
-                    disabledContainerColor = LdColors.clear,
+                    disabledContainerColor = Color.White.copy(alpha = 0.08f),
                     disabledContentColor = LdColors.cameraFaint,
                 ),
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = 48.dp).pressScale(retakePress),
             ) {
                 Text(stringResource(R.string.camera_retake))
             }
@@ -113,14 +117,15 @@ internal fun CameraConfirm(
             Button(
                 onClick = onSend,
                 enabled = sendEnabled,
-                shape = RoundedCornerShape(50),
+                shape = RoundedCornerShape(LdRadius.chip),
+                interactionSource = sendPress,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = LdColors.bubbleMine,
                     contentColor = LdColors.white,
                     disabledContainerColor = LdColors.cameraFaint,
                     disabledContentColor = LdColors.white,
                 ),
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = 48.dp).pressScale(sendPress),
             ) {
                 Text(stringResource(R.string.camera_send))
             }

@@ -67,6 +67,7 @@ object Store {
     private const val CHAT_AUTOSAVE = "chat_autosave"
     private const val NOTIFY_MSG = "notify_msg"
     private const val NOTIFY_DRAW = "notify_draw"
+    private const val ANIM = "animations_enabled"
 
     /** Avatars larger than this are refused. The wire format cannot carry more. */
     const val MAX_AVATAR_BYTES = 48 * 1024
@@ -74,6 +75,8 @@ object Store {
     private val lock = Any()
     private val pairGeneration = AtomicInteger(0)
     private val written = MutableStateFlow(0)
+    private val animationsState = MutableStateFlow(true)
+    @Volatile private var animationsLoaded = false
 
     /**
      * Increments on every successful write. Collect it from Compose; do not write it.
@@ -300,6 +303,38 @@ object Store {
         }
     }
 
+    /**
+     * Motion on this phone. Default on. Profile's "Reduce animations" switch
+     * stores the opposite. Survives unpair, like the notification switches.
+     * DATA-FLOW: this phone only. Never sent.
+     */
+    fun animationsFlow(context: Context): StateFlow<Boolean> {
+        if (!animationsLoaded) {
+            synchronized(lock) {
+                if (!animationsLoaded) {
+                    animationsState.value = prefs(context).getBoolean(ANIM, true)
+                    animationsLoaded = true
+                }
+            }
+        }
+        return animationsState
+    }
+
+    fun animationsEnabled(context: Context): Boolean = animationsFlow(context).value
+
+    fun setAnimationsEnabled(context: Context, on: Boolean) {
+        synchronized(lock) {
+            animationsLoaded = true
+            if (on == prefs(context).getBoolean(ANIM, true)) {
+                animationsState.value = on
+                return
+            }
+            prefs(context).edit().putBoolean(ANIM, on).commit()
+            animationsState.value = on
+            bump()
+        }
+    }
+
     /** When true, photos and videos (not stickers, GIFs, or files) are copied to the gallery. Default off. */
     fun chatAutoSaveMedia(context: Context): Boolean = prefs(context).getBoolean(CHAT_AUTOSAVE, false)
 
@@ -324,9 +359,9 @@ object Store {
      * cancels the location alarm.
      *
      * Kept on purpose: this phone's own name, avatar, FCM token, the last
-     * update-check time, and the notification switches. Those are not the
-     * relationship. The FCM token is also still registered with Google;
-     * wiping the local copy would not revoke it.
+     * update-check time, the notification switches, and the animations
+     * preference. Those are not the relationship. The FCM token is also still
+     * registered with Google; wiping the local copy would not revoke it.
      */
     fun unpair(context: Context) {
         val app = context.applicationContext
@@ -339,6 +374,7 @@ object Store {
             val checked = prefs(app).getLong(UPDATE, 0L)
             val notifyMsg = prefs(app).getBoolean(NOTIFY_MSG, true)
             val notifyDraw = prefs(app).getBoolean(NOTIFY_DRAW, true)
+            val animations = prefs(app).getBoolean(ANIM, true)
             Secure.remove(app, SESSION)
             prefs(app).edit().clear().commit()
             val editor = prefs(app).edit()
@@ -347,6 +383,7 @@ object Store {
             editor.putLong(UPDATE, checked)
             editor.putBoolean(NOTIFY_MSG, notifyMsg)
             editor.putBoolean(NOTIFY_DRAW, notifyDraw)
+            editor.putBoolean(ANIM, animations)
             if (avatar != null) {
                 editor.putString(MY_AVATAR, Base64.encodeToString(avatar, Base64.NO_WRAP))
             }

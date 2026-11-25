@@ -22,9 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.onClick
@@ -34,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,12 +45,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import app.loviedowpie.ui.icons.Lu
+import app.loviedowpie.ui.icons.LuIcon
 import app.loviedowpie.LocationSharing
 import app.loviedowpie.Msg
 import app.loviedowpie.Outbox
@@ -74,7 +76,7 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
         if (onBack != null) {
             GlassIconButton(
                 onClick = onBack,
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                icon = Lu.ArrowLeft,
                 description = stringResource(R.string.back),
             )
             Spacer(Modifier.width(8.dp))
@@ -88,7 +90,7 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
 fun StatusChip(text: String, emphasized: Boolean) {
     val c = LdColors.colors
     Surface(
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(LdRadius.chip),
         color = if (emphasized) c.chipOn else c.glass,
         border = BorderStroke(1.dp, c.glassBorder),
         shadowElevation = 0.dp,
@@ -298,12 +300,39 @@ internal fun ToggleRow(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        // The row owns the toggle. A null callback keeps the thumb from eating the click.
-        Switch(
-            checked = checked,
-            onCheckedChange = null,
-            enabled = enabled,
-            modifier = Modifier.clearAndSetSemantics { },
+        // The row owns the toggle. The thumb does not take the click.
+        LdSwitch(checked = checked, enabled = enabled)
+    }
+}
+
+/** Track and thumb. The thumb slides with [Motion] and snaps when motion is off. */
+@Composable
+private fun LdSwitch(checked: Boolean, enabled: Boolean) {
+    val travel by animateDpAsState(
+        targetValue = if (checked) 20.dp else 0.dp,
+        animationSpec = Motion.spring<Dp>(),
+        label = "switch",
+    )
+    val track = when {
+        !enabled -> LdColors.colors.inkMuted.copy(alpha = 0.28f)
+        checked -> LdColors.primary
+        else -> LdColors.colors.glassBorder
+    }
+    Box(
+        Modifier
+            .clearAndSetSemantics { }
+            .size(width = 52.dp, height = 32.dp)
+            .alpha(if (enabled) 1f else 0.45f)
+            .clip(RoundedCornerShape(LdRadius.chip))
+            .background(track)
+            .padding(4.dp),
+    ) {
+        Box(
+            Modifier
+                .graphicsLayer { translationX = travel.toPx() }
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(LdColors.white),
         )
     }
 }
