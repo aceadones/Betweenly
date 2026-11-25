@@ -20,14 +20,38 @@ Install the same APK on every phone, built against the same `relay.url`. FCM is 
 
 ---
 
+## Onboarding story
+
+One full-screen page at a time. The old stacked form is gone. The bottom action stays in its own bar and does not cover the page.
+
+### Phones
+
+1. Fresh install, or clear the app's data. Open the app in light, then repeat the first two pages in dark.
+2. Welcome: art fills the screen, the headline sits over it, and Get started is in the glass sheet. Swipe or tap Get started.
+3. Privacy: three tiles. Open Where does my data go, then come back. Continue.
+4. You: try to continue or swipe forward with an empty name. Type a name. Tap the avatar to pick a photo, or leave the initial. Continue.
+5. Notifications, Location, All the time (Android 10 and newer), Battery. On one page tap Maybe later. On the next, tap Allow. If a permission is already granted, that page shows Done and Continue and stays put until you continue.
+6. You're all set. Tap the button. That opens pairing.
+
+Expected: Skip is not on Welcome, You, or the last page. An empty name cannot be passed. A fresh Allow moves to the next page on its own. Maybe later also moves on, and denying a system prompt does not crash. Already-granted pages do not skip themselves. The button never sits on top of the card. With Reduce animations on (Profile, after you are paired), a later open of these pages snaps instead of moving.
+
+- [ ] Pass
+
+### Emulator
+
+The same pages. The desktop tool is not part of this. Location and battery prompts depend on the image. Denying them must not crash, and Maybe later must still move on.
+
+- [ ] Pass
+
 ## Pairing
 
 ### Phones
 
-1. Fresh install on both, or unpair first. Finish onboarding on both.
-2. On A, create a code and leave that screen up. On B, type the code.
+1. Fresh install on both, or unpair first. Finish the onboarding story on both.
+2. On A, choose Show my code and leave that screen up. The code is 8 tiles. On B, choose Enter their code and type those 8 characters, or copy on A and use Paste code on B.
+3. On the connected screen, read the safety number in digit pairs. Tap They match on both. On a second pass, tap They differ on one phone instead.
 
-Expected: both land on the main tabs. The safety number is the same 6 digits on both Profile screens. A wrong code does not open the app and does not crash.
+Expected: They match lands on the main tabs. The safety number is the same 6 digits on both Profile screens. They differ returns to the choice cards and unpairs, without a second dialog. A wrong 8-character code shakes and does not open the app. Cancel while showing a code returns to the choice cards. Cancel while joining returns to the enter boxes. Nothing crashes.
 
 - [ ] Pass
 

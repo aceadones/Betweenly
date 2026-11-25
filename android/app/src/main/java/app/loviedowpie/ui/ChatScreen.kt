@@ -76,6 +76,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -188,6 +189,7 @@ private fun ChatBody(
     var viewingId by remember { mutableStateOf<String?>(null) }
     var viewingRect by remember { mutableStateOf<Rect?>(null) }
     var composerPx by remember { mutableIntStateOf(0) }
+    var headerPx by remember { mutableIntStateOf(0) }
     var newAway by remember { mutableIntStateOf(0) }
     var showJump by remember { mutableStateOf(false) }
     var pinned by remember { mutableStateOf(true) }
@@ -198,6 +200,7 @@ private fun ChatBody(
     }
     val density = LocalDensity.current
     val composerHeight = with(density) { composerPx.toDp() }
+    val headerHeight = with(density) { headerPx.toDp() }.coerceAtLeast(72.dp)
     val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
@@ -403,33 +406,44 @@ private fun ChatBody(
                 .onGloballyPositioned { rootAt = it.positionInRoot() },
         ) {
             ChatWallBackdrop(wall, Modifier.fillMaxSize())
-            Column(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 Row(
                     Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .fillMaxWidth()
-                        .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
-                        .padding(start = 6.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                        .align(Alignment.TopCenter)
+                        .zIndex(1f)
+                        .onSizeChanged { headerPx = it.height }
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 36.dp)
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .ldGlass(RoundedCornerShape(LdRadius.chip), solid = true)
+                            .padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 36.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LdColors.colors.ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = LdColors.colors.ink,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                     Box {
-                        MotionIconButton(
+                        GlassIconButton(
                             onClick = {
                                 overflowOpen = !overflowOpen
                                 if (overflowOpen) attachOpen = false
                             },
                             icon = Lu.EllipsisVertical,
                             description = stringResource(R.string.chat_menu),
+                            solid = true,
                         )
                         AnchoredPopup(
                             visible = overflowOpen,
@@ -459,10 +473,10 @@ private fun ChatBody(
                         }
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                Box(Modifier.fillMaxSize()) {
                     if (rows.isEmpty()) {
                         Box(
-                            Modifier.fillMaxSize().padding(bottom = composerHeight),
+                            Modifier.fillMaxSize().padding(top = headerHeight, bottom = composerHeight),
                             contentAlignment = Alignment.Center,
                         ) {
                             ChatSystemNote(stringResource(R.string.chat_empty))
@@ -475,7 +489,7 @@ private fun ChatBody(
                             userScrollEnabled = !renderMenu,
                             contentPadding = PaddingValues(
                                 start = 16.dp,
-                                top = 8.dp,
+                                top = headerHeight + 8.dp,
                                 end = 16.dp,
                                 bottom = composerHeight + 8.dp,
                             ),

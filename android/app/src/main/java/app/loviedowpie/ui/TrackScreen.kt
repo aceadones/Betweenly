@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -117,81 +118,113 @@ fun TrackScreen(onBack: () -> Unit) {
                     }
                 }
                 MapTopScrim()
-                GlassIconButton(
-                    onClick = onBack,
-                    icon = Lu.ArrowLeft,
-                    description = stringResource(R.string.back),
+                Column(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.TopCenter)
                         .statusBarsPadding()
-                        .padding(8.dp),
-                )
-                if (loc?.live == true) {
-                    Box(
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .statusBarsPadding()
-                            .padding(12.dp),
-                    ) {
-                        StatusChip(stringResource(R.string.live), emphasized = true)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val partnerStatus = when {
+                        sharing && loc?.live == true -> stringResource(R.string.live)
+                        sharing -> stringResource(R.string.sharing_on)
+                        loc != null -> stringResource(R.string.sharing_paused)
+                        else -> stringResource(R.string.no_location_yet)
                     }
-                }
-                if (sharingOff) {
-                    val seenAt = loc?.lastSeen ?: 0L
-                    val whenSeen = if (seenAt > 0L) {
-                        lastSeenPhrase(context, seenAt, now)
-                    } else {
-                        stringResource(R.string.no_update_yet)
-                    }
-                    Text(
-                        stringResource(R.string.location_off_last, whenSeen),
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(top = 64.dp, start = 16.dp, end = 16.dp)
-                            .fillMaxWidth()
-                            .ldGlass(RoundedCornerShape(LdRadius.card))
-                            .padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = LdColors.colors.ink,
-                    )
-                }
-                if (showCard && loc != null) {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(
-                                top = if (sharingOff) 140.dp else 64.dp,
-                                start = 16.dp,
-                                end = 16.dp,
-                            )
-                            .fillMaxWidth()
-                            .ldGlass(RoundedCornerShape(LdRadius.card))
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)
-                        Text(
-                            batteryPhrase(context, loc.bat, loc.chg),
-                            style = MaterialTheme.typography.bodyMedium,
+                        GlassIconButton(
+                            onClick = onBack,
+                            icon = Lu.ArrowLeft,
+                            description = stringResource(R.string.back),
+                            solid = true,
                         )
-                        if (loc.lastSeen > 0L) {
-                            Text(
-                                stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
-                                style = MaterialTheme.typography.bodyMedium,
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .ldGlass(RoundedCornerShape(LdRadius.chip), solid = true)
+                                .padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RoundAvatar(revision, { Store.partnerAvatar(context) }, name, 36.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = LdColors.colors.ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    partnerStatus,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = LdColors.colors.inkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        if (lat != null && lon != null) {
+                            GlassIconButton(
+                                onClick = { recenter++ },
+                                icon = Lu.LocateFixed,
+                                description = stringResource(R.string.recenter),
+                                solid = true,
                             )
-                        } else {
-                            Text(stringResource(R.string.no_update_yet), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                }
-                if (lat != null && lon != null) {
-                    SecondaryPill(
-                        text = stringResource(R.string.recenter),
-                        onClick = { recenter++ },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 12.dp),
-                    )
+                    if (sharingOff) {
+                        val seenAt = loc?.lastSeen ?: 0L
+                        val whenSeen = if (seenAt > 0L) {
+                            lastSeenPhrase(context, seenAt, now)
+                        } else {
+                            stringResource(R.string.no_update_yet)
+                        }
+                        Text(
+                            stringResource(R.string.location_off_last, whenSeen),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
+                                .padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = LdColors.colors.ink,
+                        )
+                    }
+                    if (showCard && loc != null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)
+                            Text(
+                                batteryPhrase(context, loc.bat, loc.chg),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LdColors.colors.ink,
+                            )
+                            if (loc.lastSeen > 0L) {
+                                Text(
+                                    stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = LdColors.colors.ink,
+                                )
+                            } else {
+                                Text(
+                                    stringResource(R.string.no_update_yet),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = LdColors.colors.ink,
+                                )
+                            }
+                        }
+                    }
                 }
             }
             Column(

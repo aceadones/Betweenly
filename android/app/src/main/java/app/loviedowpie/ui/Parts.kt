@@ -8,6 +8,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,12 +48,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.vector.ImageVector
 import app.loviedowpie.ui.icons.Lu
 import app.loviedowpie.ui.icons.LuIcon
 import app.loviedowpie.LocationSharing
@@ -146,19 +150,27 @@ fun RoundAvatar(
 
 @Composable
 private fun BoxInitial(letter: String, size: Dp, modifier: Modifier) {
+    val dark = isSystemInDarkTheme()
+    val wash = if (dark) {
+        Brush.linearGradient(listOf(Color(0xFF1A3E7A), Color(0xFF3A86FF)))
+    } else {
+        Brush.linearGradient(listOf(Color(0xFFD7EEFF), Color(0xFF7EB6FF)))
+    }
+    val ink = if (dark) LdColors.white else LdColors.navy
+    val style = when {
+        size >= 100.dp -> LdType.PageTitle
+        size >= 64.dp -> MaterialTheme.typography.headlineMedium
+        else -> MaterialTheme.typography.titleLarge
+    }
     Box(
-        modifier =         modifier
+        modifier = modifier
             .size(size)
             .border(2.dp, LdColors.colors.chipOn, CircleShape)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primaryContainer),
+            .background(wash),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            letter,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
+        Text(letter, style = style, color = ink)
     }
 }
 
@@ -230,6 +242,7 @@ fun ShareToggles(snackbar: SnackbarHostState) {
             help = stringResource(R.string.share_help),
             checked = share,
             enabled = true,
+            icon = Lu.MapPin,
             onCheckedChange = { on ->
                 if (on && !LocationSharing.hasLocationPermission(context)) {
                     scope.launch {
@@ -245,6 +258,7 @@ fun ShareToggles(snackbar: SnackbarHostState) {
             help = stringResource(R.string.live_help),
             checked = live && share,
             enabled = share,
+            icon = Lu.Radio,
             onCheckedChange = { on ->
                 if (on && !LocationSharing.hasLocationPermission(context)) {
                     scope.launch {
@@ -265,6 +279,7 @@ internal fun ToggleRow(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    icon: ImageVector? = null,
 ) {
     val onChange = rememberUpdatedState(onCheckedChange)
     Row(
@@ -279,6 +294,10 @@ internal fun ToggleRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (icon != null) {
+            LuIcon(icon, contentDescription = null, tint = LdColors.colors.ink, size = 22.dp)
+            Spacer(Modifier.width(12.dp))
+        }
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp, top = 8.dp, bottom = 8.dp)) {
             Text(
                 title,

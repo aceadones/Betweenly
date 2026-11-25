@@ -235,8 +235,32 @@ private val AppType = Typography(
     labelSmall = BaseType.labelSmall.copy(fontWeight = FontWeight.Medium),
 )
 
-/** Display, Title, Body, and Caption. Sizes come from the existing font. */
+/**
+ * Display, Title, Body, and Caption stay on the compact scale used by sheets.
+ * [Hero], [Lead], and [PageTitle] are the editorial sizes for story screens.
+ */
 object LdType {
+    val Hero = TextStyle(
+        fontSize = 56.sp,
+        lineHeight = 60.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = (-1.8).sp,
+    )
+
+    val Lead = TextStyle(
+        fontSize = 40.sp,
+        lineHeight = 44.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = (-1.2).sp,
+    )
+
+    val PageTitle = TextStyle(
+        fontSize = 30.sp,
+        lineHeight = 34.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = (-0.6).sp,
+    )
+
     val Display: TextStyle
         @Composable get() = MaterialTheme.typography.headlineLarge
 
@@ -492,6 +516,7 @@ fun GlassIconButton(
     icon: ImageVector,
     description: String,
     modifier: Modifier = Modifier,
+    solid: Boolean = false,
 ) {
     val c = LdColors.colors
     val interaction = remember { MutableInteractionSource() }
@@ -499,7 +524,7 @@ fun GlassIconButton(
         modifier
             .pressScale(interaction)
             .size(48.dp)
-            .ldGlass(CircleShape, strong = true)
+            .ldGlass(CircleShape, strong = !solid, solid = solid)
             .clickable(
                 interactionSource = interaction,
                 indication = LocalIndication.current,

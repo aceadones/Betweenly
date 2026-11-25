@@ -6,60 +6,51 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.loviedowpie.LocationSharing
 import app.loviedowpie.R
 import app.loviedowpie.Store
+import app.loviedowpie.ui.icons.Lu
+import kotlinx.coroutines.launch
 
 /**
- * First-run screen. Explains each permission in plain words, asks for a name
- * and an optional photo, then hands off to pairing. Sharing stays off.
+ * First-run story. One idea per page. Nothing here is sent.
  *
- * DATA-FLOW: nothing here is sent. The name and photo are saved on this phone.
+ * DATA-FLOW: none. The name and photo are saved on this phone.
  * Pairing sends the profile later, encrypted.
  */
 @Composable
 fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var name by rememberSaveable { mutableStateOf(Store.myName(context)) }
     var tick by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -93,7 +84,22 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
     val locationOk = remember(tick) { LocationSharing.hasLocationPermission(context) }
     val backgroundOk = remember(tick) { LocationSharing.hasBackgroundLocation(context) }
     val batteryOk = remember(tick) { LocationSharing.batteryOptimizationsIgnored(context) }
+    val pages = remember {
+        buildList {
+            add(StoryPage.Welcome)
+            add(StoryPage.Privacy)
+            add(StoryPage.You)
+            add(StoryPage.Notify)
+            add(StoryPage.Location)
+            if (Build.VERSION.SDK_INT >= 29) add(StoryPage.Background)
+            add(StoryPage.Battery)
+            add(StoryPage.Ready)
+        }
+    }
+    val youIndex = pages.indexOf(StoryPage.You)
+    val pager = rememberPagerState(pageCount = { pages.size })
     val canContinue = name.trim().isNotEmpty()
+    val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp
 
     fun openSettings() {
         val intent = Intent(
@@ -107,181 +113,191 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
         }
     }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
-        bottomBar = {
-            Column(
-                modifier = Modifier
-                    .navigationBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                PrimaryPill(
-                    text = stringResource(R.string.onboarding_continue),
-                    onClick = {
-                        Store.setMyName(context, name.trim())
-                        UiFlags.setOnboardingDone(context)
-                        onDone()
-                    },
-                    enabled = canContinue,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    stringResource(R.string.onboarding_footnote),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = LdColors.colors.inkMuted,
-                )
-            }
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text(stringResource(R.string.onboarding_title), style = LdType.Display, color = LdColors.colors.ink)
-            Text(
-                stringResource(R.string.onboarding_intro),
-                style = MaterialTheme.typography.bodyLarge,
-                color = LdColors.colors.inkMuted,
-            )
-            OutlinedTextField(
-                value = name,
-                onValueChange = { value ->
-                    if (value.length <= 80) name = value.replace("\n", " ")
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.name_label)) },
-                supportingText = { Text(stringResource(R.string.name_help)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-            )
-            Text(
-                stringResource(R.string.photo_help),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            PhotoPicker(name = name.ifBlank { stringResource(R.string.partner_fallback) }) { jpeg ->
-                // DATA-FLOW: none. The photo stays on this phone until pairing sends it encrypted.
-                Store.setMyAvatar(context, jpeg)
-            }
-            PermissionRow(
-                modifier = Modifier.appear(0),
-                title = stringResource(R.string.perm_notifications_title),
-                body = stringResource(R.string.perm_notifications_body),
-                allowed = notificationsOk,
-                onAllow = if (Build.VERSION.SDK_INT >= 33) {
-                    {
-                        try {
-                            notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } catch (_: Exception) {
-                            openSettings()
-                        }
-                    }
-                } else {
-                    null
-                },
-                onSettings = ::openSettings,
-            )
-            PermissionRow(
-                modifier = Modifier.appear(1),
-                title = stringResource(R.string.perm_location_title),
-                body = stringResource(R.string.perm_location_body),
-                allowed = locationOk,
-                onAllow = {
-                    try {
-                        foreground.launch(
-                            arrayOf(
-                                Manifest.permission.ACCESS_FINE_LOCATION,
-                                Manifest.permission.ACCESS_COARSE_LOCATION,
-                            ),
-                        )
-                    } catch (_: Exception) {
-                        openSettings()
-                    }
-                },
-                onSettings = ::openSettings,
-            )
-            if (locationOk && Build.VERSION.SDK_INT >= 29) {
-                PermissionRow(
-                    modifier = Modifier.appear(2),
-                    title = stringResource(R.string.perm_background_title),
-                    body = stringResource(R.string.perm_background_body),
-                    allowed = backgroundOk,
-                    onAllow = {
-                        try {
-                            background.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                        } catch (_: Exception) {
-                            openSettings()
-                        }
-                    },
-                    onSettings = ::openSettings,
-                )
-            }
-            PermissionRow(
-                modifier = Modifier.appear(3),
-                title = stringResource(R.string.perm_battery_title),
-                body = stringResource(R.string.perm_battery_body),
-                allowed = batteryOk,
-                onAllow = { LocationSharing.requestUnrestrictedBattery(context) },
-                onSettings = ::openSettings,
-            )
-            Text(
-                stringResource(R.string.privacy_see),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = stringResource(R.string.privacy_see),
-                color = MaterialTheme.colorScheme.primary,
-                textDecoration = TextDecoration.Underline,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.clickable(onClick = onPrivacy),
+    fun go(index: Int) {
+        val dest = index.coerceIn(0, pages.lastIndex)
+        scope.launch {
+            pager.animateScrollToPage(
+                dest,
+                animationSpec = Motion.tween(Motion.SLOW, Motion.easeOut),
             )
         }
     }
-}
 
-@Composable
-private fun PermissionRow(
-    title: String,
-    body: String,
-    allowed: Boolean,
-    onAllow: (() -> Unit)?,
-    onSettings: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier.fillMaxWidth().ldGlass().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
-        Text(
-            body,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            stringResource(if (allowed) R.string.perm_allowed else R.string.perm_not_allowed),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!allowed && onAllow != null) {
-            SecondaryPill(
-                text = stringResource(R.string.perm_allow),
-                onClick = onAllow,
-                modifier = Modifier.fillMaxWidth(),
-            )
+    BackHandler(enabled = pager.currentPage > 0) {
+        go(pager.currentPage - 1)
+    }
+
+    LaunchedEffect(pager, canContinue) {
+        snapshotFlow { pager.targetPage }.collect { target ->
+            if (!canContinue && target > youIndex) pager.scrollToPage(youIndex)
         }
-        if (!allowed) {
-            TextButton(onClick = onSettings) {
-                Text(stringResource(R.string.perm_settings))
+    }
+    LaunchedEffect(pager.currentPage, name) {
+        if (pager.currentPage > youIndex && name.trim().isNotEmpty()) {
+            Store.setMyName(context, name.trim())
+        }
+    }
+
+    val page = pages[pager.currentPage.coerceIn(0, pages.lastIndex)]
+    val skippable = page != StoryPage.Welcome && page != StoryPage.You && page != StoryPage.Ready
+
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pager,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = true,
+        ) { index ->
+            when (pages[index]) {
+                StoryPage.Welcome -> WelcomePage(pager, index, topPad) { go(index + 1) }
+                StoryPage.Privacy -> PrivacyPage(
+                    topPad = topPad,
+                    onOpen = onPrivacy,
+                    onNext = { go(index + 1) },
+                )
+                StoryPage.You -> YouPage(
+                    topPad = topPad,
+                    name = name,
+                    onName = { value ->
+                        if (value.length <= 80) name = value.replace("\n", " ")
+                    },
+                    onNext = {
+                        val clean = name.trim()
+                        if (clean.isEmpty()) return@YouPage
+                        Store.setMyName(context, clean)
+                        go(index + 1)
+                    },
+                )
+                StoryPage.Notify -> {
+                    AdvanceAfterGrant(
+                        granted = notificationsOk,
+                        active = pager.currentPage == index,
+                        onGranted = { go(index + 1) },
+                    )
+                    PermissionPage(
+                        topPad = topPad,
+                        title = stringResource(R.string.perm_notifications_title),
+                        line = stringResource(R.string.onb_perm_notify_line),
+                        icon = Lu.Bell,
+                        granted = notificationsOk,
+                        onAllow = if (Build.VERSION.SDK_INT >= 33 && !notificationsOk) {
+                            {
+                                try {
+                                    notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } catch (_: Exception) {
+                                    openSettings()
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                        onContinue = { go(index + 1) },
+                        onLater = { go(index + 1) },
+                        onSettings = ::openSettings,
+                        showFootnote = true,
+                    )
+                }
+                StoryPage.Location -> {
+                    AdvanceAfterGrant(
+                        granted = locationOk,
+                        active = pager.currentPage == index,
+                        onGranted = { go(index + 1) },
+                    )
+                    PermissionPage(
+                        topPad = topPad,
+                        title = stringResource(R.string.perm_location_title),
+                        line = stringResource(R.string.onb_perm_loc_line),
+                        icon = Lu.MapPin,
+                        granted = locationOk,
+                        onAllow = {
+                            try {
+                                foreground.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    ),
+                                )
+                            } catch (_: Exception) {
+                                openSettings()
+                            }
+                        },
+                        onContinue = { go(index + 1) },
+                        onLater = { go(index + 1) },
+                        onSettings = ::openSettings,
+                        showFootnote = false,
+                    )
+                }
+                StoryPage.Background -> {
+                    AdvanceAfterGrant(
+                        granted = backgroundOk,
+                        active = pager.currentPage == index,
+                        onGranted = { go(index + 1) },
+                    )
+                    PermissionPage(
+                        topPad = topPad,
+                        title = stringResource(R.string.perm_background_title),
+                        line = stringResource(R.string.onb_perm_bg_line),
+                        icon = Lu.LocateFixed,
+                        granted = backgroundOk,
+                        onAllow = {
+                            if (!locationOk) {
+                                try {
+                                    foreground.launch(
+                                        arrayOf(
+                                            Manifest.permission.ACCESS_FINE_LOCATION,
+                                            Manifest.permission.ACCESS_COARSE_LOCATION,
+                                        ),
+                                    )
+                                } catch (_: Exception) {
+                                    openSettings()
+                                }
+                            } else {
+                                try {
+                                    background.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                } catch (_: Exception) {
+                                    openSettings()
+                                }
+                            }
+                        },
+                        onContinue = { go(index + 1) },
+                        onLater = { go(index + 1) },
+                        onSettings = ::openSettings,
+                        showFootnote = false,
+                    )
+                }
+                StoryPage.Battery -> {
+                    AdvanceAfterGrant(
+                        granted = batteryOk,
+                        active = pager.currentPage == index,
+                        onGranted = { go(index + 1) },
+                    )
+                    PermissionPage(
+                        topPad = topPad,
+                        title = stringResource(R.string.perm_battery_title),
+                        line = stringResource(R.string.onb_perm_bat_line),
+                        icon = Lu.Battery,
+                        granted = batteryOk,
+                        onAllow = { LocationSharing.requestUnrestrictedBattery(context) },
+                        onContinue = { go(index + 1) },
+                        onLater = { go(index + 1) },
+                        onSettings = ::openSettings,
+                        showFootnote = false,
+                    )
+                }
+                StoryPage.Ready -> ReadyPage(topPad) {
+                    val clean = name.trim()
+                    if (clean.isNotEmpty()) Store.setMyName(context, clean)
+                    UiFlags.setOnboardingDone(context)
+                    onDone()
+                }
             }
         }
+        StoryChrome(
+            page = pager.currentPage.coerceIn(0, pages.lastIndex),
+            count = pages.size,
+            canBack = pager.currentPage > 0,
+            canSkip = skippable,
+            onBack = { go(pager.currentPage - 1) },
+            onSkip = { go(pager.currentPage + 1) },
+        )
     }
 }
