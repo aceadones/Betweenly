@@ -8,11 +8,11 @@ A private app for two people in a long-distance relationship. Android only, side
 
 - 🔐 Pair with an 8-character code. The code is never sent. Both phones show the same 6-digit safety number.
 - 💬 Chat: text, reply, reactions, unsend, photos, video, files, stickers, GIFs, and link cards.
-- 📍 Location about every 10 minutes, or live while you leave it on. Battery % rides along. Distance is calculated on your phone.
+- 📍 Location about every 10 minutes, or live while you leave it on. Battery % is sent on its own, including when sharing is off. Distance is calculated on your phone.
 - 🔔 Ring their phone for up to two minutes, or send a short ping. Notification words are chosen on each phone.
 - 🎨 A shared drawing page, plus a home-screen drawing widget.
 - 🎵 Listen together through Duet, a separate music app. Betweenly carries the encrypted messages. It does not play songs.
-- 🔄 In-app updates from the relay, checked at most once a day unless you ask.
+- 🔄 In-app updates from the relay, and from a public GitHub release when one exists, checked at most once every 6 hours unless you ask.
 
 Accent is a crimson rose (`#D6245A`, deep `#A3123E`, soft `#FFE3EA`). Light screens use a warm blush background. Dark screens use deep wine (`#1A0A12` toward `#2A0F1C`). Success green and destructive red stay semantic colors.
 
@@ -32,7 +32,7 @@ Until those files exist, the tables below are the description an AI should trust
 
 ## Install 0.0.1
 
-The phone app does not download from GitHub. A person installs the APK. Later updates can come from the relay (see [Updates](#updates)).
+A person installs the APK. Later updates can come from the relay, or from a public GitHub release of this repo when that release is the newer build (see [Updates](#updates)).
 
 1. On a computer, open the GitHub release **v0.0.1** for `aceadones/Betweenly` (the repository name is still Loviedowpie). The asset is `Betweenly-v0.0.1.apk`. `scripts/release.sh` is what publishes that release.
 2. Copy the APK to the phone. The build is **arm64-v8a only**.
@@ -78,7 +78,7 @@ The phone that shows the code is role `a` (initiator) and writes mailbox B / rea
 
 | | |
 |---|---|
-| What it does | While Share my location is on, an inexact alarm about every 10 minutes takes one balanced-power fix and sends it. The first fix is sent when you turn sharing on, so the partner does not wait 10 minutes. If location permission is missing, or the last cached fix is older than 30 minutes, the message is battery only. |
+| What it does | While Share my location is on, an inexact alarm about every 10 minutes takes one balanced-power fix and sends it. The first fix is sent when you turn sharing on, so the partner does not wait 10 minutes. If location permission is missing, or the last cached fix is older than 30 minutes, that tick is battery only. Battery is also sent on its own when sharing is off. See [Battery](#battery). |
 | Data | `loc`: `t`, `lat`, `lon`, `acc` (metres), `bat` (0–100 or -1), `chg`, `ts`, `live` (false). Or `bat`: `t`, `bat`, `chg`, `ts`. |
 | Where it goes | Relay mailbox. These routine updates use `wake` off. They sit until the partner’s app pulls (app open, process start, or some other wake). |
 | Encryption | Session XChaCha20-Poly1305. |
@@ -106,14 +106,14 @@ A `share` message is `{"t":"share","on","ts"}` with `wake` on.
 
 | | |
 |---|---|
-| What it does | Shows the partner’s battery percent and whether it is charging. The number comes from their `loc` or `bat` message. This phone reads its own percent with `BatteryManager` sticky extras and sends it inside those messages. There is no separate battery poll. |
+| What it does | Shows the partner’s battery percent, whether it is charging, and how long ago that reading arrived. A reading an hour old or more is shown muted. This phone reads its own percent with `BatteryManager` sticky extras. |
 | Data | Integer `bat`, boolean `chg`. |
-| Where it goes | Inside the encrypted `loc` or `bat` message on the relay. |
+| Where it goes | Inside an encrypted `bat` message on the relay, and also inside `loc` when a location fix is sent. |
 | Encryption | Same as location. |
 | Retention | Last value stays on the partner’s phone until a newer message or unpair. |
 | Permissions | None for reading your own battery. |
-| Battery and data | No extra radio use beyond the location message it rides in. |
-| Turn it off | Turn location sharing off. A `bat` message is still sent on a sharing tick when no fix is available, and when live mode stops with no fix. Unpair stops it. |
+| Battery and data | A send when the percent moves by 5 or more, or charging changes, while the process is alive. An inexact alarm about every 30 minutes sends again if the process was dead. Reboot re-arms that alarm when the phone is paired. `wake` is off. No coordinates. |
+| Turn it off | Unpair stops it. Turning location sharing off does not stop the battery message. |
 
 ### Distance
 
@@ -276,11 +276,11 @@ The Activity card does not poll. It reads Duet when the Activity tab resumes, an
 
 | | |
 |---|---|
-| What it does | Compares `versionCode` with the relay’s public JSON. A newer build can be downloaded, SHA-256 checked, and handed to the system installer. Android still requires the APK to be signed with a key it will accept. |
+| What it does | Compares `versionCode` first (a higher code is newer even when the version name matches), then the version name when a code is missing. A newer build can be downloaded, SHA-256 checked, checked for the same signing certificate as this install, and handed to the system installer. |
 | Data | `versionCode`, `versionName`, `sha256`, `size`, `notes`. No pairing data. |
-| Where it goes | `GET /update/latest` and, if you install, `GET /update/apk` on the relay. The phone does not call GitHub. A developer running `scripts/release.sh` also uploads that APK to a GitHub release on `aceadones/Betweenly`. |
-| Encryption | HTTPS only. The JSON and the APK are not end-to-end encrypted. The phone checks SHA-256 before install. |
-| Retention | The published APK stays in relay KV until the next release replaces `upd:json` and `upd:apk`. The download is `cacheDir/update.apk` and is deleted if the hash does not match. A quiet check runs at most once every 24 hours. A failed check does not move that clock. Profile can force a check. |
+| Where it goes | `GET /update/latest` and, if you install from the relay, `GET /update/apk`. The same check reads `https://api.github.com/repos/aceadones/Betweenly/releases/latest`. A 401, 403, or 404 is ignored. If that public release is the one chosen, the APK is downloaded from its asset URL on a GitHub host. `scripts/release.sh` still uploads the APK to that GitHub release. |
+| Encryption | HTTPS only. The JSON and the APK are not end-to-end encrypted. The phone checks SHA-256 and the signing certificate before install. |
+| Retention | The published APK stays in relay KV until the next release replaces `upd:json` and `upd:apk`. The download is `cacheDir/update.apk` and is deleted if the hash or the signing certificate does not match. A quiet check runs at most once every 6 hours, from app launch. A failed check does not move that clock. Profile can force a check. Later hides the dialog until the next check. The banner stays. |
 | Permissions | Internet. Request-install-packages, and the system “unknown apps” screen once. |
 | Battery and data | A few kilobytes for the JSON on a check. The APK download happens only after you accept it. |
 | Turn it off | Don’t tap install. There is no analytics in the check. |
@@ -318,7 +318,7 @@ Reduce animations is on Profile, stored as `animations_enabled`, default on, kep
 | Wake ping body | The app sees `w` = `1` | Same, on their phone | The worker sends `{w:"1"}` | Yes, that field | No | The FCM payload is that one field |
 | Notification words | Yes | No. Each phone uses its own wording | No | No | No | No |
 | Link-preview fetch | Your phone requested that URL | The card you sealed, not the site | No | No | No | The website, and anyone on that HTTPS path, sees your IP |
-| Update JSON and APK | Yes | No pairing data in it | Yes, it is public on the relay | No | No | Yes, it is not end-to-end encrypted |
+| Update JSON and APK | Yes | No pairing data in it | Yes, the relay copy is public. A public GitHub release is also read | No | No | Yes, it is not end-to-end encrypted |
 | Listen-together and shared-playlist JSON | Yes, sealed, and only the JSON Duet handed over | Yes, after decrypt, then only inside Duet | Ciphertext only | A wake for a music invite. Not for other music ops or playlists | No | TLS size and timing |
 | Duet now-playing line | Yes, on the Activity card | No | No | No | No | No |
 | Duet install page | The browser, if you tap Install and a browser is installed | No | No | No | No | The browser’s own request to GitHub. Betweenly does not make it |
@@ -393,10 +393,11 @@ The relay base URL is `BuildConfig.RELAY_URL`, from `relay.url` in `android/loca
 | `GET /file/{32 hex}` | Phone → relay. That ciphertext. |
 | `GET /update/latest` | Phone → relay. Public JSON. |
 | `GET /update/apk` | Phone → relay. Public APK. |
+| `https://api.github.com/repos/aceadones/Betweenly/releases/latest` | Phone → GitHub, on an update check. Public release JSON. A 401, 403, or 404 is ignored. An APK download from that release stays on `github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `objects.githubusercontent.com`, or `github-releases.githubusercontent.com`. |
 | `https://fcm.googleapis.com/v1/projects/{project}/messages:send` | Relay → Google, only when `wake=1` and a token exists. Body data is `{w:"1"}`. High priority, TTL 3600 seconds. |
 | `https://oauth2.googleapis.com/token` | Relay → Google, to authorize that send. The service-account JSON is a Worker secret, not in the app. |
 | Firebase Messaging SDK | Phone → Google, only if `fcm.projectId`, `fcm.appId`, `fcm.apiKey`, and `fcm.senderId` were set at build time. Used to obtain a token and receive the empty ping. |
-| `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Phone → OpenStreetMap, when a tile is not in the local cache. User-Agent `Betweenly/1.0`. Each tile is capped at 512 KB. Disk cache is 30 MB under `cacheDir/tiles`. Zoom is 3 through 19. Redirects are followed for tiles. |
+| `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Phone → OpenStreetMap, when a tile is not in the local cache. User-Agent `Betweenly/<version> (Android; com.nextlayer.betweenly)`. At most 2 downloads at once. Each tile is capped at 512 KB. Disk cache is 30 MB under `cacheDir/tiles`. Memory cache is about 18 MB. Zoom is 3 through 19. Redirects are followed for tiles. |
 | `https://…` in a message you send | Sender’s phone only, for a link card. |
 
 Play services location is a library call on the device. This app does not name another location URL.
@@ -406,7 +407,7 @@ Play services location is a library call on the device. This app does not name a
 | What | Where | Encryption | Unpair |
 |---|---|---|---|
 | Session (80 bytes: 32-byte key, send counter, receive counter, inbox id, outbox id) | SharedPreferences `secure`, key `session` | AES-256-GCM, Android Keystore alias `betweenly_wrap`, stored as base64(12-byte IV \|\| ciphertext) | Deleted |
-| Names, avatars, last partner place, sharing flags, FCM token, notification wording, animation switch, unread count, reaction shortcuts | SharedPreferences `app` | Avatars are base64 in that file. The session key is not in this file. The prefs file is app-private and excluded from backup | Partner fields, sharing flags, unread count, and reaction shortcuts are cleared. Your name, your avatar, the FCM token, notification wording, the animation switch, and the last update-check time stay |
+| Names, avatars, last partner place, sharing flags, FCM token, notification wording, animation switch, unread count, reaction shortcuts, update offer | SharedPreferences `app` | Avatars are base64 in that file. The session key is not in this file. The prefs file is app-private and excluded from backup | Partner fields, sharing flags, unread count, reaction shortcuts, and this phone’s last-sent battery sample are cleared. Your name, your avatar, the FCM token, notification wording, the animation switch, the last update-check time, and the saved update offer stay |
 | Onboarding finished | SharedPreferences `ui` | App-private | Kept, so unpair does not repeat onboarding |
 | Chat rows | `databases/chat.db` | Each JSON body is Keystore AES-GCM | Deleted |
 | Attachment bytes | `filesDir/attachments/{id}.bin` | Keystore AES-GCM | Deleted |

@@ -16,9 +16,9 @@ Phone A                         Relay                              Phone B
 - **Pairing.** A shows an 8-character code. Both run SPAKE2 with that code as the password. The relay sees SPAKE2 messages and a rendezvous id that is an HKDF of the code (`betweenly-v1` / `rendezvous`). It does not see the code. Both derive one 32-byte key, two 16-byte mailbox ids, and a 6-digit safety number. Role `b` may write the handshake 3 times, then the code is burned (HTTP 429). Records expire after 10 minutes.
 - **Messages.** UTF-8 JSON, a 2-byte length, zero padding to a multiple of 512 bytes, then XChaCha20-Poly1305. The nonce is 24 random bytes. The counter is authenticated as additional data and stored next to the nonce. Replays fail. Gaps are allowed. The 80-byte session lives in Android Keystore-wrapped preferences (`Secure`, alias `betweenly_wrap`).
 - **Files.** A fresh 32-byte key, XChaCha20-Poly1305, additional data `file`. Ciphertext goes to `PUT /file/{id}` (24 MB cap, 7 days). The key travels only inside a sealed message.
-- **Location.** An inexact alarm about every 10 minutes takes one balanced-power fix. Live is a foreground service: send on a 5 metre move or every 30 seconds. Sharing off keeps the last point on the partner’s phone.
+- **Location.** An inexact alarm about every 10 minutes takes one balanced-power fix. Live is a foreground service: send on a 5 metre move or every 30 seconds. Sharing off keeps the last point on the partner’s phone. Battery is a separate encrypted `bat` message: on a 5% change or a charging change while the process is alive, and an inexact alarm about every 30 minutes, including while location sharing is off.
 - **Wake.** `POST /box/{id}?wake=1` makes the worker send a high-priority FCM data message whose only field is `w` = `1`. The phone pulls the mailbox. Without Firebase keys in the build, nothing wakes a sleeping phone.
-- **Updates.** `GET /update/latest`, then `GET /update/apk`, then SHA-256, then the system installer. Phones do not call GitHub.
+- **Updates.** `GET /update/latest`, then `GET /update/apk`, SHA-256, the same signing certificate as this install, then the system installer. A quiet check also reads `https://api.github.com/repos/aceadones/Betweenly/releases/latest` when that repo is public. A 401, 403, or 404 is ignored.
 - **Map.** OpenStreetMap tiles in `TileMap.kt`. No map SDK.
 
 ## Module map
@@ -30,12 +30,12 @@ core/                 Rust. No network, no disk. JNI behind feature jni-api.
 
 relay/src/index.ts    Worker. KV + one Durable Object mailbox per id.
 android/              Kotlin + Jetpack Compose.
-  App.kt              Process start: FCM init, re-arm sharing, one inbox pull.
+  App.kt              Process start: FCM init, re-arm sharing, battery watcher, one inbox pull.
   MainActivity.kt     Tabs and the foreground inbox pump (5 s, or 2 s).
   Core.kt Relay.kt    JNI and HTTPS.
   Msg.kt              JSON codecs, Outbox, Inbox. One session lock.
   Pairing.kt Store.kt Secure.kt
-  LocationSharing.kt  Alarm, boot receiver, one-shot fix. LiveLocationService.kt
+  LocationSharing.kt  Location alarm, battery alarm, boot receiver, one-shot fix. LiveLocationService.kt
   RingController.kt   RingService.kt
   FcmService.kt       Empty wake and token registration.
   FileTransfer.kt     Shared upload/download for chat, draw, and wall.
@@ -246,14 +246,15 @@ sequenceDiagram
     Dev->>KV: upd:json and upd:apk
     Dev->>GH: tag v{versionName}, APK asset
     P->>KV: GET /update/latest
-    alt versionCode is newer
+    P->>GH: GET releases/latest, ignored on 401, 403, or 404
+    alt versionCode is newer, or the name is newer when the code is unknown
         P->>P: show the notes
-        P->>KV: GET /update/apk
-        P->>P: SHA-256 must match, then the system installer
+        P->>KV: GET /update/apk, or the GitHub asset when that release won
+        P->>P: SHA-256 and signing certificate must match, then the system installer
     end
 ```
 
-A quiet check is skipped for 24 hours after a real answer (including “nothing published”). A network error does not move that clock. The phone never requests GitHub.
+A quiet check is skipped for 6 hours after a real answer (including “nothing published”). A network error does not move that clock. Version code is compared first, so a higher code is newer even when the version name matches this install.
 
 ## Inbox apply
 

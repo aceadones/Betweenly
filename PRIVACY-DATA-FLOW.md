@@ -2,7 +2,7 @@
 
 Written so a person or an AI can answer that from this repo. Status: version 0.0.1, package `com.nextlayer.betweenly`. Every network call in the Kotlin, Rust, and Worker code is tagged `DATA-FLOW:`.
 
-The product name is Betweenly. The Cloudflare Worker name in `relay/wrangler.toml` is still `loviedowpie-relay`. The GitHub repository `scripts/release.sh` publishes to is still `aceadones/Betweenly`. Phones talk to the relay URL baked in at build time (`relay.url`), not to GitHub.
+The product name is Betweenly. The Cloudflare Worker name in `relay/wrangler.toml` is still `loviedowpie-relay`. The GitHub repository `scripts/release.sh` publishes to is still `aceadones/Betweenly`. Pair traffic goes to the relay URL baked in at build time (`relay.url`). An update check may also read the public GitHub releases API for that repo. A private repo (401, 403, or 404) is ignored.
 
 ## How a message is wrapped
 
@@ -24,8 +24,8 @@ File bytes use a fresh 32-byte key, XChaCha20-Poly1305, additional data `file`, 
 | Session key and file keys | Never in the clear | Phones, Keystore-wrapped | The two phones |
 | FCM token | Yes | Relay KV `tok:{inbox}`, TLS only, 60-day TTL | The relay, and Google |
 | Wake ping | Yes | Google FCM, body `{w:"1"}` | Google sees that a ping happened. The body has no message, name, or place. |
-| Map tiles | Yes, when you open the map | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | The tile host sees the square and your IP. User-Agent `Betweenly/1.0`. Cached 30 MB on the phone. |
-| Update check | Yes | Relay `/update/latest` and `/update/apk` | Public release metadata and the APK. The relay sees your IP. The phone’s own HTTP client does not call GitHub. The Duet install button can hand `https://github.com/aceadones/Duet/releases` to the browser. |
+| Map tiles | Yes, when you open the map | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | The tile host sees the square and your IP. User-Agent `Betweenly/<version> (Android; com.nextlayer.betweenly)`. At most 2 downloads at once. Cached 30 MB on disk and about 18 MB in memory. |
+| Update check | Yes, at launch (at most every 6 hours) and when you tap Check for updates | Relay `/update/latest` and `/update/apk`, and `https://api.github.com/repos/aceadones/Betweenly/releases/latest` | Public release metadata and the APK. The relay sees your IP. GitHub sees your IP only when that repo answers. A 401, 403, or 404 is ignored. An APK is downloaded only after you tap Update, from the relay or from a GitHub host on the allowlist (`github.com`, `api.github.com`, `release-assets.githubusercontent.com`, `objects.githubusercontent.com`, `github-releases.githubusercontent.com`). The phone checks SHA-256 and that the APK is signed with the same certificate as this install. The Duet install button can still hand `https://github.com/aceadones/Duet/releases` to the browser. That browser request is separate. |
 | Chat, reactions, replies, unsends | Yes, sealed | Relay mailbox | The partner. Unsend is an id only, and `wake` is off. |
 | Attachments, drawing PNGs, wallpaper photos | Yes, sealed file plus a sealed pointer | Relay `/file/{id}` for 7 days, pointer in the mailbox | The partner, after decrypt. The key is only in the pointer. |
 | Link previews | The sender’s phone fetches the site | The `https` URL in the message, then the card is sealed | The website sees the sender’s IP. The receiver does not contact the site. |
@@ -77,7 +77,7 @@ Turning sharing off sends `share` with `on` false and `wake` on, and does not se
 
 Distance is a haversine on this phone between Play services `lastLocation` and the partner’s last point. It is not uploaded. The home screen formats miles for US, GB, LR, and MM, otherwise metres under 1 km and kilometres above.
 
-Battery percent and charging come from `BatteryManager` sticky extras on the sending phone. There is no separate battery upload.
+Battery percent and charging come from `BatteryManager` sticky extras on the sending phone. A separate encrypted `bat` message is sent when the percent moves by 5 or more, or charging changes, while the process is alive. An inexact alarm about every 30 minutes sends again if the process was dead. This runs even when location sharing is off, and it does not include coordinates. `wake` is off. The partner’s screen shows that percent and how long ago it arrived. A reading an hour old or more is shown muted.
 
 ### Ring, ping, notifications
 
@@ -109,7 +109,7 @@ Betweenly does not play songs and does not read the on-phone library. Duet is a 
 
 When Duet asks to send, Betweenly seals the JSON and posts it with `Outbox.send`. The relay sees ciphertext. Wake is on only for a `music` object whose `op` is `invite`. Duet cannot ask Betweenly to seal a chat, a location, or any other type: those are rejected, and so is a payload over 60,000 bytes. Betweenly does not attach a file, a key, the session, or the relay URL.
 
-The partner’s phone opens the blob inside `Inbox` and passes the JSON string to the registered Duet messenger. If no Duet is registered, a `music` invite posts a local notice and every other `music` or `plist` payload is dropped. The notice uses `NotificationTexts`. Default mode is content-free. The button opens Duet, or `https://github.com/aceadones/Duet/releases` in the system browser. Betweenly’s HTTP client does not call GitHub.
+The partner’s phone opens the blob inside `Inbox` and passes the JSON string to the registered Duet messenger. If no Duet is registered, a `music` invite posts a local notice and every other `music` or `plist` payload is dropped. The notice uses `NotificationTexts`. Default mode is content-free. The button opens Duet, or `https://github.com/aceadones/Duet/releases` in the system browser. Betweenly’s HTTP client does not request that page.
 
 `STATUS` back to Duet is `paired`, the partner’s name, and `partnerOnline` set to the string `unknown`. It is sent when Duet registers and when that pair or name changes. It is local IPC.
 
@@ -119,7 +119,7 @@ On each process start, Betweenly deletes `betweenly-music.db`, `filesDir/music`,
 
 ### Updates and FCM
 
-`/update/latest` is public JSON (`versionCode`, `versionName`, `sha256`, `size`, `notes`). `/update/apk` is the public APK. The phone checks SHA-256 before it offers the installer. A quiet check runs at most once every 24 hours. Nothing about the pair is sent.
+`/update/latest` is public JSON (`versionCode`, `versionName`, `sha256`, `size`, `notes`). `/update/apk` is the public APK. The same check reads the public GitHub releases API for `aceadones/Betweenly`. A 401, 403, or 404 is ignored and does not crash. The phone checks SHA-256 and the signing certificate before it offers the installer. A quiet check runs at most once every 6 hours. Nothing about the pair is sent. Version code is compared first.
 
 The FCM token is registered with Google only when the four `fcm.*` build fields are set. It is then `PUT /token/{inbox}`. The worker stores it for 60 days and uses it only to send `{w:"1"}`. Analytics collection is off in the manifest, and FCM auto-init is off.
 
@@ -129,7 +129,7 @@ No analytics, no ads, no accounts, no Firebase Analytics, no Google Maps SDK, no
 
 ## Data at rest
 
-See the table in [README.md](README.md#data-at-rest). In short: the session and the chat bodies are encrypted with the Keystore. Drawings and the wallpaper JPEG are app-private files. Unpair deletes the session, partner profile, partner location, chat database, attachments, wallpaper, and drawings. It keeps your name, your photo, the FCM token, notification wording, the animation switch, the last update-check time, and the Duet now-playing line. The next process start deletes a leftover music database and song copies from an older build. Unpair does not delete map tiles, gallery copies, or the onboarding-done flag.
+See the table in [README.md](README.md#data-at-rest). In short: the session and the chat bodies are encrypted with the Keystore. Drawings and the wallpaper JPEG are app-private files. Unpair deletes the session, partner profile, partner location, chat database, attachments, wallpaper, and drawings. It keeps your name, your photo, the FCM token, notification wording, the animation switch, the last update-check time, the saved update offer, and the Duet now-playing line. It clears this phone’s last-sent battery sample so the next pair sends a fresh one. The next process start deletes a leftover music database and song copies from an older build. Unpair does not delete map tiles, gallery copies, or the onboarding-done flag.
 
 ## Code map
 
