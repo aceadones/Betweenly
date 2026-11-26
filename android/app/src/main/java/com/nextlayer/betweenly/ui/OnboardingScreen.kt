@@ -9,11 +9,9 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -30,7 +28,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -99,7 +96,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
     val youIndex = pages.indexOf(StoryPage.You)
     val pager = rememberPagerState(pageCount = { pages.size })
     val canContinue = name.trim().isNotEmpty()
-    val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp
 
     fun openSettings() {
         val intent = Intent(
@@ -141,21 +137,27 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
     val page = pages[pager.currentPage.coerceIn(0, pages.lastIndex)]
     val skippable = page != StoryPage.Welcome && page != StoryPage.You && page != StoryPage.Ready
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        StoryChrome(
+            page = pager.currentPage.coerceIn(0, pages.lastIndex),
+            count = pages.size,
+            canBack = pager.currentPage > 0,
+            canSkip = skippable,
+            onBack = { go(pager.currentPage - 1) },
+            onSkip = { go(pager.currentPage + 1) },
+        )
         HorizontalPager(
             state = pager,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             userScrollEnabled = true,
         ) { index ->
             when (pages[index]) {
-                StoryPage.Welcome -> WelcomePage(pager, index, topPad) { go(index + 1) }
+                StoryPage.Welcome -> WelcomePage(pager, index) { go(index + 1) }
                 StoryPage.Privacy -> PrivacyPage(
-                    topPad = topPad,
                     onOpen = onPrivacy,
                     onNext = { go(index + 1) },
                 )
                 StoryPage.You -> YouPage(
-                    topPad = topPad,
                     name = name,
                     onName = { value ->
                         if (value.length <= 80) name = value.replace("\n", " ")
@@ -174,7 +176,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                         onGranted = { go(index + 1) },
                     )
                     PermissionPage(
-                        topPad = topPad,
                         title = stringResource(R.string.perm_notifications_title),
                         line = stringResource(R.string.onb_perm_notify_line),
                         icon = Lu.Bell,
@@ -204,7 +205,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                         onGranted = { go(index + 1) },
                     )
                     PermissionPage(
-                        topPad = topPad,
                         title = stringResource(R.string.perm_location_title),
                         line = stringResource(R.string.onb_perm_loc_line),
                         icon = Lu.MapPin,
@@ -235,7 +235,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                         onGranted = { go(index + 1) },
                     )
                     PermissionPage(
-                        topPad = topPad,
                         title = stringResource(R.string.perm_background_title),
                         line = stringResource(R.string.onb_perm_bg_line),
                         icon = Lu.LocateFixed,
@@ -273,7 +272,6 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                         onGranted = { go(index + 1) },
                     )
                     PermissionPage(
-                        topPad = topPad,
                         title = stringResource(R.string.perm_battery_title),
                         line = stringResource(R.string.onb_perm_bat_line),
                         icon = Lu.Battery,
@@ -286,7 +284,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                         showFootnote = false,
                     )
                 }
-                StoryPage.Ready -> ReadyPage(topPad) {
+                StoryPage.Ready -> ReadyPage {
                     val clean = name.trim()
                     if (clean.isNotEmpty()) Store.setMyName(context, clean)
                     UiFlags.setOnboardingDone(context)
@@ -294,13 +292,5 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
                 }
             }
         }
-        StoryChrome(
-            page = pager.currentPage.coerceIn(0, pages.lastIndex),
-            count = pages.size,
-            canBack = pager.currentPage > 0,
-            canSkip = skippable,
-            onBack = { go(pager.currentPage - 1) },
-            onSkip = { go(pager.currentPage + 1) },
-        )
     }
 }

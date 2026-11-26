@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The mark's box is already near the canvas centre. Its visual weight sits
+  high and left (heart lobes, arc). Inset the left and top only so the bitmap
+  shifts about 2.8% right and down inside the 108dp foreground. The scaled
+  mark stays inside the central 66% safe zone. Launcher and Android 12 splash
+  both read this through the adaptive icon.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_foreground"
+    android:insetLeft="6dp"
+    android:insetTop="6dp"
+    android:insetRight="0dp"
+    android:insetBottom="0dp" />

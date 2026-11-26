@@ -9,8 +9,10 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -44,9 +46,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -60,7 +64,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.pager.PagerState
 import com.nextlayer.betweenly.R
@@ -123,49 +126,61 @@ fun StoryChrome(
     modifier: Modifier = Modifier,
 ) {
     val step = stringResource(R.string.onb_progress, page + 1, count)
-    Column(
-        modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (canBack) {
-                GlassIconButton(
-                    onClick = onBack,
-                    icon = Lu.ChevronLeft,
-                    description = stringResource(R.string.back),
-                )
-            } else {
-                Spacer(Modifier.size(48.dp))
-            }
-            StoryProgress(
-                count = count,
-                page = page,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp)
-                    .semantics { contentDescription = step },
-            )
-            if (canSkip) {
-                Box(
-                    Modifier
-                        .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(LdRadius.chip))
-                        .clickable(role = Role.Button, onClick = onSkip)
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        stringResource(R.string.onb_skip),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = LdColors.colors.ink,
+    val sky = LdColors.colors.skyTop
+    // Opaque plate, then a short fade into the page. The pager is laid out under
+    // this whole block, so a headline cannot scroll or swipe under Back, the dots, or Skip.
+    Column(modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(sky)
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (canBack) {
+                    GlassIconButton(
+                        onClick = onBack,
+                        icon = Lu.ChevronLeft,
+                        description = stringResource(R.string.back),
                     )
+                } else {
+                    Spacer(Modifier.size(48.dp))
                 }
-            } else {
-                Spacer(Modifier.width(64.dp))
+                StoryProgress(
+                    count = count,
+                    page = page,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp)
+                        .semantics { contentDescription = step },
+                )
+                if (canSkip) {
+                    Box(
+                        Modifier
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(LdRadius.chip))
+                            .clickable(role = Role.Button, onClick = onSkip)
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            stringResource(R.string.onb_skip),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = LdColors.colors.ink,
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.width(64.dp))
+                }
             }
         }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .background(Brush.verticalGradient(listOf(sky, sky.copy(alpha = 0f)))),
+        )
     }
 }
 
@@ -201,35 +216,76 @@ private fun StoryProgress(count: Int, page: Int, modifier: Modifier = Modifier) 
     }
 }
 
+/**
+ * Largest square that fits this slot, centred. The bitmap is fitted inside,
+ * so a 1:1 scene is never cropped. Margins stay empty and show the page.
+ */
 @Composable
-fun StoryBody(
-    topPad: Dp,
-    actions: @Composable ColumnScope.() -> Unit,
-    content: @Composable ColumnScope.() -> Unit,
+private fun StoryArtFrame(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(top = topPad, start = 24.dp, end = 24.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            content = content,
-        )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            content = actions,
-        )
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val side = if (maxHeight.value.isFinite()) minOf(maxWidth, maxHeight) else maxWidth
+        Box(Modifier.size(side), content = content)
     }
 }
 
 @Composable
-fun WelcomePage(pager: PagerState, page: Int, topPad: Dp, onStart: () -> Unit) {
+fun StoryBody(
+    art: @Composable () -> Unit,
+    actions: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        StoryArtFrame(Modifier.weight(1.15f)) {
+            art()
+        }
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                content = content,
+            )
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                content = actions,
+            )
+        }
+    }
+}
+
+/**
+ * Blush in light, wine in dark. The fade ends before the type, and the plate
+ * under the words is 94% of that surface.
+ *
+ * Body ink on that plate stays above 4.5:1 in both themes, including when the
+ * art behind the scrim is white (dark) or black (light).
+ */
+private fun Modifier.heroScrim(surface: Color): Modifier = drawBehind {
+    val fade = 48.dp.toPx()
+    val edge = if (size.height <= 1f) 1f else (fade / size.height).coerceIn(0f, 1f)
+    val solid = surface.copy(alpha = 0.94f)
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to surface.copy(alpha = 0f),
+            edge to solid,
+            1f to solid,
+        ),
+    )
+}
+
+@Composable
+fun WelcomePage(pager: PagerState, page: Int, onStart: () -> Unit) {
     var risen by remember { mutableStateOf(!Motion.enabled) }
     LaunchedEffect(Unit) { risen = true }
     val rise by animateDpAsState(
@@ -242,50 +298,64 @@ fun WelcomePage(pager: PagerState, page: Int, topPad: Dp, onStart: () -> Unit) {
         animationSpec = Motion.tween(Motion.SLOW, Motion.easeOut),
         label = "sheetA",
     )
-    val sheet = 36.dp
-    Box(Modifier.fillMaxSize()) {
-        WelcomeScene(Modifier.fillMaxSize().storyParallax(pager, page))
+    val palette = LdColors.colors
+    val surface = if (isSystemInDarkTheme()) palette.skyBottom else palette.skyTop
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val boxMaxHeight = this.maxHeight
         Column(Modifier.fillMaxSize()) {
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
-                Column(
+            StoryArtFrame(Modifier.weight(1f)) {
+                WelcomeScene(
                     Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .heightIn(max = maxHeight)
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 24.dp, end = 24.dp, top = topPad, bottom = 4.dp),
-                ) {
-                    BrandMark(Modifier.storyEnter(0).padding(bottom = 12.dp), size = 64.dp)
-                    Text(
-                        stringResource(R.string.onb_welcome_title),
-                        modifier = Modifier.storyEnter(0),
-                        style = LdType.Hero,
-                        color = LdColors.colors.ink,
-                    )
-                }
+                        .fillMaxSize()
+                        .storyParallax(pager, page),
+                )
+                BrandMark(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp)
+                        .storyEnter(0),
+                    size = 56.dp,
+                )
             }
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .heightIn(max = boxMaxHeight * 0.58f)
                     .graphicsLayer {
                         translationY = rise.toPx()
                         alpha = fade
                     }
-                    .ldGlass(RoundedCornerShape(topStart = sheet, topEnd = sheet), strong = true)
+                    .heroScrim(surface)
                     .navigationBarsPadding()
-                    .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(start = 24.dp, end = 24.dp, top = 64.dp, bottom = 12.dp),
             ) {
-                Text(
-                    stringResource(R.string.onb_welcome_sub),
-                    modifier = Modifier.storyEnter(1),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = LdColors.colors.inkMuted,
-                )
+                // Padding sits outside the scroll, so the type stays on the solid part of the scrim.
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.onb_welcome_title),
+                        modifier = Modifier.storyEnter(1),
+                        style = LdType.Hero,
+                        color = palette.ink,
+                    )
+                    Text(
+                        stringResource(R.string.onb_welcome_sub),
+                        modifier = Modifier.storyEnter(2),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = palette.inkMuted,
+                    )
+                }
                 PrimaryPill(
                     text = stringResource(R.string.onb_get_started),
                     onClick = onStart,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
                 )
             }
         }
@@ -293,9 +363,17 @@ fun WelcomePage(pager: PagerState, page: Int, topPad: Dp, onStart: () -> Unit) {
 }
 
 @Composable
-fun PrivacyPage(topPad: Dp, onOpen: () -> Unit, onNext: () -> Unit) {
+fun PrivacyPage(onOpen: () -> Unit, onNext: () -> Unit) {
     StoryBody(
-        topPad = topPad,
+        art = {
+            StoryAsset(
+                res = R.drawable.onb_privacy,
+                modifier = Modifier.fillMaxSize(),
+                scale = ContentScale.Fit,
+            ) {
+                IllustrationTile(Lu.ShieldCheck, Modifier.fillMaxSize())
+            }
+        },
         actions = {
             PrimaryPill(
                 text = stringResource(R.string.onboarding_continue),
@@ -310,30 +388,19 @@ fun PrivacyPage(topPad: Dp, onOpen: () -> Unit, onNext: () -> Unit) {
             style = LdType.Lead,
             color = LdColors.colors.ink,
         )
-        StoryAsset(
-            res = R.drawable.onb_privacy,
-            modifier = Modifier
-                .storyEnter(1)
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(LdRadius.card)),
-            scale = ContentScale.Crop,
-        ) {
-            IllustrationTile(Lu.ShieldCheck, Modifier.fillMaxSize())
-        }
         Text(
             stringResource(R.string.onboarding_intro),
-            modifier = Modifier.storyEnter(2),
+            modifier = Modifier.storyEnter(1),
             style = MaterialTheme.typography.bodyLarge,
             color = LdColors.colors.inkMuted,
         )
-        PromiseTile(Lu.ShieldCheck, R.string.onb_privacy_e2e, R.string.onb_privacy_e2e_body, 3)
-        PromiseTile(Lu.EyeOff, R.string.onb_privacy_none, R.string.onb_privacy_none_body, 4)
-        PromiseTile(Lu.Lock, R.string.onb_privacy_share, R.string.onb_privacy_share_body, 5)
+        PromiseTile(Lu.ShieldCheck, R.string.onb_privacy_e2e, R.string.onb_privacy_e2e_body, 2)
+        PromiseTile(Lu.EyeOff, R.string.onb_privacy_none, R.string.onb_privacy_none_body, 3)
+        PromiseTile(Lu.Lock, R.string.onb_privacy_share, R.string.onb_privacy_share_body, 4)
         Text(
             stringResource(R.string.onb_where),
             modifier = Modifier
-                .storyEnter(6)
+                .storyEnter(5)
                 .heightIn(min = 48.dp)
                 .clickable(role = Role.Button, onClick = onOpen)
                 .padding(vertical = 12.dp),
@@ -372,10 +439,18 @@ private fun PromiseTile(icon: ImageVector, title: Int, body: Int, index: Int) {
 }
 
 @Composable
-fun YouPage(topPad: Dp, name: String, onName: (String) -> Unit, onNext: () -> Unit) {
+fun YouPage(name: String, onName: (String) -> Unit, onNext: () -> Unit) {
     val ready = name.trim().isNotEmpty()
     StoryBody(
-        topPad = topPad,
+        art = {
+            StoryAsset(
+                res = R.drawable.onb_name,
+                modifier = Modifier.fillMaxSize(),
+                scale = ContentScale.Fit,
+            ) {
+                IllustrationTile(Lu.User, Modifier.fillMaxSize())
+            }
+        },
         actions = {
             PrimaryPill(
                 text = stringResource(R.string.onboarding_continue),
@@ -397,21 +472,10 @@ fun YouPage(topPad: Dp, name: String, onName: (String) -> Unit, onNext: () -> Un
             style = MaterialTheme.typography.bodyLarge,
             color = LdColors.colors.inkMuted,
         )
-        StoryAsset(
-            res = R.drawable.onb_name,
-            modifier = Modifier
-                .storyEnter(2)
-                .fillMaxWidth()
-                .height(180.dp)
-                .clip(RoundedCornerShape(LdRadius.card)),
-            scale = ContentScale.Crop,
-        ) {
-            IllustrationTile(Lu.User, Modifier.fillMaxSize())
-        }
         HeroPhoto(
             name = name.ifBlank { stringResource(R.string.partner_fallback) },
             modifier = Modifier
-                .storyEnter(3)
+                .storyEnter(2)
                 .align(Alignment.CenterHorizontally),
         )
         Text(
@@ -502,7 +566,6 @@ private fun HeroPhoto(name: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun PermissionPage(
-    topPad: Dp,
     title: String,
     line: String,
     icon: ImageVector,
@@ -515,7 +578,21 @@ fun PermissionPage(
     showFootnote: Boolean,
 ) {
     StoryBody(
-        topPad = topPad,
+        art = {
+            if (art != 0) {
+                StoryAsset(
+                    res = art,
+                    modifier = Modifier.fillMaxSize(),
+                    scale = ContentScale.Fit,
+                ) {
+                    IllustrationTile(icon, Modifier.fillMaxSize())
+                }
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    IllustrationTile(icon, Modifier.size(220.dp))
+                }
+            }
+        },
         actions = {
             if (granted || onAllow == null) {
                 PrimaryPill(
@@ -542,22 +619,14 @@ fun PermissionPage(
         },
     ) {
         Text(title, modifier = Modifier.storyEnter(0), style = LdType.PageTitle, color = LdColors.colors.ink)
-        IllustrationTile(
-            icon = icon,
-            art = art,
-            modifier = Modifier
-                .storyEnter(1)
-                .fillMaxWidth()
-                .height(220.dp),
-        )
         Text(
             line,
-            modifier = Modifier.storyEnter(2),
+            modifier = Modifier.storyEnter(1),
             style = MaterialTheme.typography.bodyLarge,
             color = LdColors.colors.inkMuted,
         )
         Row(
-            Modifier.storyEnter(3).heightIn(min = 48.dp),
+            Modifier.storyEnter(2).heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             GrantMark(granted)
@@ -572,9 +641,20 @@ fun PermissionPage(
 }
 
 @Composable
-fun ReadyPage(topPad: Dp, onNext: () -> Unit) {
+fun ReadyPage(onNext: () -> Unit) {
     StoryBody(
-        topPad = topPad,
+        art = {
+            Box(Modifier.fillMaxSize()) {
+                StoryAsset(
+                    res = R.drawable.onb_allset,
+                    modifier = Modifier.fillMaxSize(),
+                    scale = ContentScale.Fit,
+                ) {
+                    Box(Modifier.fillMaxSize())
+                }
+                SoftConfetti(Modifier.fillMaxSize(), seed = 3)
+            }
+        },
         actions = {
             PrimaryPill(
                 text = stringResource(R.string.onb_connect),
@@ -583,21 +663,6 @@ fun ReadyPage(topPad: Dp, onNext: () -> Unit) {
             )
         },
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(LdRadius.card)),
-        ) {
-            StoryAsset(
-                res = R.drawable.onb_allset,
-                modifier = Modifier.fillMaxSize(),
-                scale = ContentScale.Crop,
-            ) {
-                Box(Modifier.fillMaxSize())
-            }
-            SoftConfetti(Modifier.fillMaxSize(), seed = 3)
-        }
         Text(
             stringResource(R.string.onb_all_title),
             modifier = Modifier.storyEnter(0),

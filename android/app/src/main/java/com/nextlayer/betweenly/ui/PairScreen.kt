@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,14 +16,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -44,7 +44,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -204,11 +204,9 @@ private fun ChoiceCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(LdRadius.card)
-    val media = RoundedCornerShape(LdRadius.inner(LdRadius.card, 8.dp))
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 148.dp)
             .storyEnter(index)
             .pressScale(interaction)
             .ldGlass(shape, strong = true)
@@ -218,24 +216,19 @@ private fun ChoiceCard(
                 role = Role.Button,
                 onClick = onClick,
             )
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // 12dp keeps the square inside the card's 28dp corner, so the artwork is not sliced.
         Box(
             Modifier
-                .size(width = 112.dp, height = 132.dp)
-                .clip(media),
+                .fillMaxWidth()
+                .aspectRatio(1f),
+            contentAlignment = Alignment.Center,
         ) { art() }
-        Column(
-            Modifier
-                .weight(1f)
-                .padding(start = 12.dp, end = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.headlineSmall, color = LdColors.colors.ink)
-            Text(help, style = MaterialTheme.typography.bodyMedium, color = LdColors.colors.inkMuted)
-            LuIcon(Lu.ArrowRight, contentDescription = null, tint = LdColors.colors.textPrimary, size = 20.dp)
-        }
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = LdColors.colors.ink)
+        Text(help, style = MaterialTheme.typography.bodyMedium, color = LdColors.colors.inkMuted)
+        LuIcon(Lu.ArrowRight, contentDescription = null, tint = LdColors.colors.textPrimary, size = 20.dp)
     }
 }
 
@@ -406,7 +399,12 @@ private fun Safety(number: String, onMatch: () -> Unit, onDiffer: () -> Unit) {
             )
         },
     ) {
-        Box(Modifier.fillMaxWidth().height(210.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f),
+            contentAlignment = Alignment.Center,
+        ) {
             SoftConfetti(Modifier.fillMaxSize(), seed = 11)
             MeetArc(Modifier.fillMaxSize())
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -460,13 +458,17 @@ private fun PairFrame(
     actions: @Composable ColumnScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val sky = LdColors.colors.skyTop
     Column(Modifier.fillMaxSize()) {
-        if (onBack != null) {
-            Row(
-                Modifier
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            ) {
+        // Fixed top inset. Scroll content starts below it, including when there is no Back button.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(sky)
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = if (onBack != null) 4.dp else 0.dp),
+        ) {
+            if (onBack != null) {
                 GlassIconButton(
                     onClick = onBack,
                     icon = Lu.ChevronLeft,
@@ -474,11 +476,16 @@ private fun PairFrame(
                 )
             }
         }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(16.dp)
+                .background(Brush.verticalGradient(listOf(sky, sky.copy(alpha = 0f)))),
+        )
         Column(
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .then(if (onBack == null) Modifier.statusBarsPadding() else Modifier)
                 .padding(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             content = content,

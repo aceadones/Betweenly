@@ -141,7 +141,7 @@ fun WelcomeScene(modifier: Modifier = Modifier) {
     StoryAsset(
         res = R.drawable.onb_hero,
         modifier = modifier,
-        scale = ContentScale.Crop,
+        scale = ContentScale.Fit,
     ) { WelcomeCanvas() }
 }
 
@@ -236,8 +236,8 @@ fun IllustrationTile(icon: ImageVector, modifier: Modifier = Modifier, art: Int 
     if (art != 0) {
         StoryAsset(
             res = art,
-            modifier = modifier.clip(RoundedCornerShape(LdRadius.card)),
-            scale = ContentScale.Crop,
+            modifier = modifier,
+            scale = ContentScale.Fit,
         ) { TileCanvas(icon, Modifier.fillMaxSize()) }
     } else {
         TileCanvas(icon, modifier)
@@ -283,7 +283,7 @@ private fun TileCanvas(icon: ImageVector, modifier: Modifier) {
 fun TicketArt(modifier: Modifier = Modifier) {
     StoryAsset(
         res = R.drawable.pair_show,
-        modifier = modifier.clip(RoundedCornerShape(LdRadius.tile)),
+        modifier = modifier,
         scale = ContentScale.Fit,
     ) { TicketCanvas() }
 }
@@ -345,7 +345,7 @@ private fun TicketCanvas() {
 fun InboxArt(modifier: Modifier = Modifier) {
     StoryAsset(
         res = R.drawable.pair_enter,
-        modifier = modifier.clip(RoundedCornerShape(LdRadius.tile)),
+        modifier = modifier,
         scale = ContentScale.Fit,
     ) { InboxCanvas() }
 }
@@ -437,7 +437,11 @@ fun RadarStrip(hasPoint: Boolean, modifier: Modifier = Modifier) {
 /** Dotted arc the two avatars meet over. */
 @Composable
 fun MeetArc(modifier: Modifier = Modifier) {
-    StoryAsset(res = R.drawable.pair_connected, modifier = modifier) { MeetCanvas() }
+    StoryAsset(
+        res = R.drawable.pair_connected,
+        modifier = modifier,
+        scale = ContentScale.Fit,
+    ) { MeetCanvas() }
 }
 
 @Composable
