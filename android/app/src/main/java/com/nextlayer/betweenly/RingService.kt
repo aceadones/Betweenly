@@ -158,7 +158,8 @@ class RingService : Service() {
         )
         val copy = notificationText(this, NotifEvent.CallRing)
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setSmallIcon(R.drawable.ic_stat_logo)
+            .setColor(ContextCompat.getColor(this, R.color.notif_accent))
             .setContentTitle(copy.title)
             .setContentText(copy.text)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -170,7 +171,7 @@ class RingService : Service() {
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .setFullScreenIntent(open, true)
-            .addAction(R.drawable.ic_stat_heart, getString(R.string.notif_dismiss), stop)
+            .addAction(R.drawable.ic_stat_logo, getString(R.string.notif_dismiss), stop)
             .build()
     }
 

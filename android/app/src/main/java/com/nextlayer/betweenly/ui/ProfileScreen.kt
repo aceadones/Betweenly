@@ -73,7 +73,7 @@ import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.SavedDrawing
 import com.nextlayer.betweenly.Store
 import com.nextlayer.betweenly.UpdateCheck
-import com.nextlayer.betweenly.UpdateInfo
+import com.nextlayer.betweenly.UpdatePrompt
 import com.nextlayer.betweenly.Updater
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.ui.icons.LuIcon
@@ -102,7 +102,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     var checking by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var statusError by remember { mutableStateOf(false) }
-    var update by remember { mutableStateOf<UpdateInfo?>(null) }
+    val offer by UpdatePrompt.info.collectAsState()
     var viewingTs by rememberSaveable { mutableStateOf(-1L) }
     val safety = remember(revision) { Store.safetyNumber(context) }
     val drawings = remember(drawRev) { DrawStore.list(context) }
@@ -129,10 +129,10 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
             onDismissRequest = { confirm = false },
             modifier = Modifier.ldPopupFrame(),
             shape = MaterialTheme.shapes.extraLarge,
-            containerColor = LdColors.colors.menu,
+            containerColor = LdColors.glassFill,
             tonalElevation = 0.dp,
-            titleContentColor = LdColors.colors.ink,
-            textContentColor = LdColors.colors.ink,
+            titleContentColor = LdColors.onGlass,
+            textContentColor = LdColors.onGlassMuted,
             title = { Text(stringResource(R.string.unpair_title)) },
             text = { Text(stringResource(R.string.unpair_body_v2)) },
             confirmButton = {
@@ -156,10 +156,12 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                         BetweenlyWidget.updateAll(app)
                         onUnpaired()
                     },
-                ) { Text(stringResource(R.string.unpair_confirm)) }
+                ) { Text(stringResource(R.string.unpair_confirm), color = Color(0xFFFFB4AB)) }
             },
             dismissButton = {
-                TextButton(onClick = { confirm = false }) { Text(stringResource(R.string.pair_cancel)) }
+                TextButton(onClick = { confirm = false }) {
+                    Text(stringResource(R.string.pair_cancel), color = LdColors.onGlass)
+                }
             },
         )
     }
@@ -282,12 +284,12 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                     Text(
                         safety.ifBlank { stringResource(R.string.safety_missing) },
                         style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace),
-                        color = LdColors.colors.ink,
+                        color = surfaceInk(),
                     )
                     Text(
                         stringResource(R.string.safety_help),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = LdColors.colors.inkMuted,
+                        color = surfaceInk(muted = true),
                     )
                 }
             }
@@ -301,7 +303,7 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                             checking = true
                             scope.launch {
                                 val result = try {
-                                    // DATA-FLOW: update metadata, from the relay, not encrypted, no user data.
+                                    // DATA-FLOW: update metadata from the relay, and from GitHub only when that repo is public. Not encrypted. No pair data.
                                     Updater.check(context, force = true)
                                 } catch (e: CancellationException) {
                                     throw e
@@ -310,17 +312,16 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                                 }
                                 when (result) {
                                     is UpdateCheck.Available -> {
-                                        update = result.info
+                                        UpdatePrompt.publish(result.info, dialog = true)
                                         status = null
                                         statusError = false
                                     }
                                     UpdateCheck.UpToDate -> {
-                                        update = null
+                                        UpdatePrompt.clear()
                                         status = context.getString(R.string.update_latest)
                                         statusError = false
                                     }
                                     UpdateCheck.Error -> {
-                                        update = null
                                         status = context.getString(R.string.update_unreachable)
                                         statusError = true
                                     }
@@ -332,35 +333,39 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                     )
                     if (checking) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = LdColors.onGlass,
+                        )
                     }
                     status?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (statusError) MaterialTheme.colorScheme.error else LdColors.colors.ink,
+                            color = if (statusError) Color(0xFFFFB4AB) else surfaceInk(),
                         )
                     }
-                    update?.let { UpdateBanner(it) }
+                    offer?.let { UpdateBanner(it) }
                     BrandMark(Modifier.padding(top = 8.dp), size = 56.dp)
                     Text(
                         stringResource(R.string.about_title),
                         style = MaterialTheme.typography.titleMedium,
-                        color = LdColors.colors.ink,
+                        color = surfaceInk(),
                     )
                     Text(
                         stringResource(R.string.about_body),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = LdColors.colors.inkMuted,
+                        color = surfaceInk(muted = true),
                     )
                     Text(
                         stringResource(R.string.version_line, BuildConfig.VERSION_NAME),
                         style = MaterialTheme.typography.bodySmall,
-                        color = LdColors.colors.inkMuted,
+                        color = surfaceInk(muted = true),
                     )
                     Text(
                         stringResource(R.string.privacy_see),
-                        color = LdColors.colors.textPrimary,
+                        color = LdColors.onGlass,
                         textDecoration = TextDecoration.Underline,
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier

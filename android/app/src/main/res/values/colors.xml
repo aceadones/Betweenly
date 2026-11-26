@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background">#FFE9EF</color>
+    <color name="window_background">#FFE9ED</color>
     <color name="widget_background">#D9FFFFFF</color>
     <color name="widget_tile">#B3FFFFFF</color>
-    <color name="widget_tile_active">#FFFFE3EA</color>
-    <color name="widget_icon">#A3123E</color>
+    <color name="widget_tile_active">#FFFFE3E7</color>
+    <color name="widget_icon">#A31230</color>
     <color name="widget_border">#99FFFFFF</color>
+    <color name="notif_accent">#D62448</color>
 </resources>

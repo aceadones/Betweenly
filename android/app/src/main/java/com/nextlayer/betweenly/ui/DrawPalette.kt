@@ -56,7 +56,7 @@ internal fun BrushSheet(model: DrawingViewModel, onPick: (BrushKind) -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(stringResource(R.string.draw_brush), style = LdType.Title, color = LdColors.colors.ink)
+        Text(stringResource(R.string.draw_brush), style = LdType.Title, color = surfaceInk())
         kinds.chunked(3).forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -99,7 +99,7 @@ private fun BrushCell(
             .clip(shape)
             .border(
                 width = if (selected) 2.dp else 1.dp,
-                color = if (selected) LdColors.primary else LdColors.colors.menuBorder,
+                color = if (selected) Color.White.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.16f),
                 shape = shape,
             )
             .clickable(
@@ -131,7 +131,7 @@ private fun BrushCell(
         Text(
             stringResource(kind.label()),
             style = LdType.Caption,
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -154,11 +154,11 @@ internal fun ColorSheet(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.draw_color), style = LdType.Title, color = LdColors.colors.ink)
+        Text(stringResource(R.string.draw_color), style = LdType.Title, color = surfaceInk())
         SwatchRow(colors = DrawInk.swatches.map { it.toArgb() }, selected = model.colorArgb, onSwatch = onSwatch)
-        Text(stringResource(R.string.draw_recent), style = LdType.Caption, color = LdColors.colors.inkMuted)
+        Text(stringResource(R.string.draw_recent), style = LdType.Caption, color = surfaceInk(muted = true))
         if (model.recents.isEmpty()) {
-            Text(stringResource(R.string.draw_recent_none), style = LdType.Caption, color = LdColors.colors.inkMuted)
+            Text(stringResource(R.string.draw_recent_none), style = LdType.Caption, color = surfaceInk(muted = true))
         } else {
             SwatchRow(colors = model.recents, selected = model.colorArgb, onSwatch = onSwatch)
         }
@@ -174,7 +174,7 @@ internal fun ColorSheet(
                     onWheelPlaced(p.x + coords.size.width / 2f, p.y + coords.size.height / 2f)
                 }
                 .clip(shape)
-                .background(LdColors.primary.copy(alpha = 0.12f))
+                .background(LdColors.white.copy(alpha = 0.92f))
                 .clickable(
                     interactionSource = interaction,
                     indication = LocalIndication.current,
@@ -185,8 +185,8 @@ internal fun ColorSheet(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LuIcon(Lu.Palette, contentDescription = null, tint = LdColors.primary)
-            Text(stringResource(R.string.draw_picker), style = LdType.Title, color = LdColors.colors.ink)
+            LuIcon(Lu.Palette, contentDescription = null, tint = LdColors.navy)
+            Text(stringResource(R.string.draw_picker), style = LdType.Title, color = LdColors.navy)
         }
     }
 }
@@ -222,7 +222,7 @@ private fun SwatchRow(colors: List<Int>, selected: Int, onSwatch: (Int) -> Unit)
                         .background(Color(color))
                         .border(
                             width = if (on) 2.dp else 1.dp,
-                            color = if (on) LdColors.primary else LdColors.colors.ink.copy(alpha = 0.35f),
+                            color = if (on) Color.White.copy(alpha = 0.70f) else Color.White.copy(alpha = 0.28f),
                             shape = CircleShape,
                         ),
                 )
@@ -239,9 +239,9 @@ internal fun SizeSheet(model: DrawingViewModel, onChange: (Float) -> Unit, onFin
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(stringResource(R.string.draw_size), style = LdType.Title, color = LdColors.colors.ink)
+        Text(stringResource(R.string.draw_size), style = LdType.Title, color = surfaceInk())
         PreviewDot(diameter = px.dp, color = Color(model.colorArgb), alpha = model.opacity)
-        Text(stringResource(R.string.draw_size_px, px), style = LdType.Caption, color = LdColors.colors.inkMuted)
+        Text(stringResource(R.string.draw_size_px, px), style = LdType.Caption, color = surfaceInk(muted = true))
         Slider(
             value = px.toFloat(),
             onValueChange = { onChange(it.roundToInt().coerceIn(1, 64).toFloat()) },
@@ -262,7 +262,7 @@ internal fun OpacitySheet(model: DrawingViewModel, onChange: (Float) -> Unit, on
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(stringResource(R.string.draw_opacity), style = LdType.Title, color = LdColors.colors.ink)
+        Text(stringResource(R.string.draw_opacity), style = LdType.Title, color = surfaceInk())
         Box(
             Modifier
                 .size(64.dp)
@@ -275,10 +275,10 @@ internal fun OpacitySheet(model: DrawingViewModel, onChange: (Float) -> Unit, on
                     .align(Alignment.Center)
                     .clip(CircleShape)
                     .background(Color(model.colorArgb).copy(alpha = percent / 100f))
-                    .border(1.dp, LdColors.colors.ink.copy(alpha = 0.35f), CircleShape),
+                    .border(1.dp, surfaceInk().copy(alpha = 0.35f), CircleShape),
             )
         }
-        Text(stringResource(R.string.draw_opacity_pct, percent), style = LdType.Caption, color = LdColors.colors.inkMuted)
+        Text(stringResource(R.string.draw_opacity_pct, percent), style = LdType.Caption, color = surfaceInk(muted = true))
         Slider(
             value = percent.toFloat(),
             onValueChange = { onChange(it.roundToInt().coerceIn(5, 100) / 100f) },
@@ -305,7 +305,7 @@ private fun PreviewDot(diameter: androidx.compose.ui.unit.Dp, color: Color, alph
                 .size(diameter.coerceAtLeast(4.dp))
                 .clip(CircleShape)
                 .background(color.copy(alpha = alpha))
-                .border(1.dp, LdColors.colors.ink.copy(alpha = 0.35f), CircleShape),
+                .border(1.dp, surfaceInk().copy(alpha = 0.35f), CircleShape),
         )
     }
 }
@@ -320,9 +320,9 @@ private fun Checker() {
 
 @Composable
 private fun sliderColors() = SliderDefaults.colors(
-    thumbColor = LdColors.primary,
-    activeTrackColor = LdColors.primary,
-    inactiveTrackColor = LdColors.colors.inkMuted.copy(alpha = 0.35f),
+    thumbColor = LdColors.white,
+    activeTrackColor = LdColors.white.copy(alpha = 0.85f),
+    inactiveTrackColor = Color.White.copy(alpha = 0.28f),
 )
 
 private fun sameRgb(a: Int, b: Int): Boolean = (a and 0xFFFFFF) == (b and 0xFFFFFF)

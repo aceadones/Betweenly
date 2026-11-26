@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -107,14 +108,14 @@ fun EmojiPicker(
                         stringResource(R.string.chat_emoji_title),
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.titleMedium,
-                        color = LdColors.colors.ink,
+                        color = LdColors.onGlass,
                     )
                     if (recent.isNotEmpty()) {
                         Text(
                             stringResource(R.string.chat_emoji_recent),
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
                             style = MaterialTheme.typography.labelLarge,
-                            color = LdColors.colors.inkMuted,
+                            color = LdColors.onGlassMuted,
                         )
                         EmojiStrip(recent, onPick)
                     }
@@ -137,13 +138,17 @@ fun EmojiPicker(
                                         indication = null,
                                         onClick = { category = index },
                                     )
+                                    .background(
+                                        if (selected) LdColors.white.copy(alpha = 0.92f) else LdColors.clear,
+                                        CircleShape,
+                                    )
                                     .padding(horizontal = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
                                     stringResource(item.title),
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) LdColors.primary else LdColors.colors.inkMuted,
+                                    color = if (selected) LdColors.navy else LdColors.onGlassMuted,
                                 )
                             }
                         }

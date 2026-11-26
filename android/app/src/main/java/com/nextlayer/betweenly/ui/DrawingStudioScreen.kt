@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -55,7 +56,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -978,7 +978,7 @@ private fun StudioBar(
                 stringResource(R.string.draw_title),
                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
                 style = LdType.Title,
-                color = LdColors.colors.ink,
+                color = LdColors.onGlass,
                 maxLines = 1,
             )
             ToolButton(
@@ -1007,7 +1007,6 @@ private fun StudioBar(
 
 @Composable
 private fun ModeRow(mode: CanvasMode, page: Int, onMode: (CanvasMode) -> Unit) {
-    val colors = LdColors.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1019,8 +1018,8 @@ private fun ModeRow(mode: CanvasMode, page: Int, onMode: (CanvasMode) -> Unit) {
             modifier = Modifier
                 .height(40.dp)
                 .clip(CircleShape)
-                .background(colors.glassStrong)
-                .border(1.dp, colors.glassBorder, CircleShape)
+                .background(Color.White.copy(alpha = 0.14f))
+                .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
                 .padding(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1039,7 +1038,7 @@ private fun ModeRow(mode: CanvasMode, page: Int, onMode: (CanvasMode) -> Unit) {
             Text(
                 stringResource(R.string.draw_page, page),
                 style = LdType.Caption.copy(fontFeatureSettings = "tnum"),
-                color = colors.inkMuted,
+                color = LdColors.onGlassMuted,
                 maxLines = 1,
             )
         }
@@ -1048,7 +1047,6 @@ private fun ModeRow(mode: CanvasMode, page: Int, onMode: (CanvasMode) -> Unit) {
 
 @Composable
 private fun ModeSegment(label: String, selected: Boolean, onClick: () -> Unit) {
-    val colors = LdColors.colors
     val interaction = remember(label) { MutableInteractionSource() }
     val shape = CircleShape
     Box(
@@ -1056,7 +1054,7 @@ private fun ModeSegment(label: String, selected: Boolean, onClick: () -> Unit) {
             .pressScale(interaction)
             .height(34.dp)
             .clip(shape)
-            .background(if (selected) colors.pill else Color.Transparent)
+            .background(if (selected) LdColors.white.copy(alpha = 0.92f) else Color.Transparent)
             .clickable(
                 interactionSource = interaction,
                 indication = LocalIndication.current,
@@ -1069,7 +1067,7 @@ private fun ModeSegment(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             label,
             style = LdType.Caption,
-            color = if (selected) colors.onPill else colors.ink,
+            color = if (selected) LdColors.navy else LdColors.onGlass,
             maxLines = 1,
         )
     }
@@ -1090,17 +1088,14 @@ private fun DrewChipFade(visible: Boolean, name: String, modifier: Modifier = Mo
 
 @Composable
 private fun DrewChip(name: String) {
-    val colors = LdColors.colors
     val shape = RoundedCornerShape(LdRadius.chip)
     Text(
         stringResource(R.string.draw_partner_drew, name),
         modifier = Modifier
-            .clip(shape)
-            .background(colors.glassStrong)
-            .border(1.dp, colors.glassBorder, shape)
+            .darkGlass(shape)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         style = LdType.Caption,
-        color = colors.ink,
+        color = LdColors.onGlass,
         maxLines = 1,
     )
 }
@@ -1121,7 +1116,6 @@ private fun PaperRow(selected: PaperKind, onPick: (PaperKind) -> Unit) {
 
 @Composable
 private fun PaperChip(kind: PaperKind, selected: Boolean, onClick: () -> Unit) {
-    val colors = LdColors.colors
     val interaction = remember(kind) { MutableInteractionSource() }
     val shape = RoundedCornerShape(LdRadius.chip)
     val label = stringResource(
@@ -1136,9 +1130,13 @@ private fun PaperChip(kind: PaperKind, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .pressScale(interaction)
             .height(48.dp)
-            .clip(shape)
-            .background(if (selected) colors.pill else colors.glassStrong)
-            .border(1.dp, if (selected) colors.pillBorder else colors.glassBorder, shape)
+            .then(
+                if (selected) {
+                    Modifier.clip(shape).background(LdColors.white.copy(alpha = 0.92f))
+                } else {
+                    Modifier.darkGlass(shape)
+                },
+            )
             .clickable(
                 interactionSource = interaction,
                 indication = LocalIndication.current,
@@ -1150,7 +1148,7 @@ private fun PaperChip(kind: PaperKind, selected: Boolean, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (kind == PaperKind.Clear) MiniChecker()
-        Text(label, style = LdType.Caption, color = if (selected) colors.onPill else colors.ink, maxLines = 1)
+        Text(label, style = LdType.Caption, color = if (selected) LdColors.navy else LdColors.onGlass, maxLines = 1)
     }
 }
 
@@ -1174,7 +1172,6 @@ private fun MiniChecker() {
 
 @Composable
 private fun PartnerChip(onClick: () -> Unit) {
-    val colors = LdColors.colors
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(LdRadius.chip)
     Row(
@@ -1182,9 +1179,7 @@ private fun PartnerChip(onClick: () -> Unit) {
             .appear(0)
             .pressScale(interaction)
             .height(48.dp)
-            .clip(shape)
-            .background(colors.glassStrong)
-            .border(1.dp, colors.glassBorder, shape)
+            .darkGlass(shape)
             .clickable(
                 interactionSource = interaction,
                 indication = LocalIndication.current,
@@ -1195,8 +1190,8 @@ private fun PartnerChip(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        LuIcon(Lu.Image, contentDescription = null, tint = colors.ink, size = 20.dp)
-        Text(stringResource(R.string.draw_partner), style = LdType.Caption, color = colors.ink, maxLines = 1)
+        LuIcon(Lu.Image, contentDescription = null, tint = LdColors.onGlass, size = 20.dp)
+        Text(stringResource(R.string.draw_partner), style = LdType.Caption, color = LdColors.onGlass, maxLines = 1)
     }
 }
 
@@ -1283,16 +1278,16 @@ private fun ToolButton(
 ) {
     val interaction = remember(description) { MutableInteractionSource() }
     val tint = when {
-        !enabled -> LdColors.colors.ink.copy(alpha = 0.35f)
-        highlighted -> LdColors.primary
-        else -> LdColors.colors.ink
+        !enabled -> LdColors.onGlass.copy(alpha = 0.35f)
+        highlighted -> LdColors.navy
+        else -> LdColors.onGlass
     }
     Box(
         modifier = Modifier
             .pressScale(interaction)
             .size(48.dp)
             .clip(CircleShape)
-            .background(if (highlighted) LdColors.primary.copy(alpha = 0.16f) else Color.Transparent)
+            .background(if (highlighted) LdColors.white.copy(alpha = 0.92f) else Color.Transparent)
             .onGloballyPositioned { coords ->
                 onPlace?.invoke(coords.positionInRoot(), IntSize(coords.size.width, coords.size.height))
             }
@@ -1306,7 +1301,7 @@ private fun ToolButton(
         contentAlignment = Alignment.Center,
     ) {
         if (spinning) {
-            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = LdColors.primary, strokeWidth = 2.dp)
+            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = LdColors.onGlass, strokeWidth = 2.dp)
         } else {
             LuIcon(icon, contentDescription = description, tint = tint, size = 22.dp, selected = highlighted)
         }
@@ -1318,7 +1313,7 @@ private fun ToolButton(
                     .size(8.dp)
                     .clip(CircleShape)
                     .background(dot)
-                    .border(1.dp, LdColors.colors.ink.copy(alpha = 0.35f), CircleShape),
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
             )
         }
     }
@@ -1357,12 +1352,14 @@ private fun SendButton(enabled: Boolean, spinning: Boolean, onClick: () -> Unit)
 
 @Composable
 private fun SheetSurface(content: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .ldGlass(RoundedCornerShape(LdRadius.card), solid = true),
-    ) {
-        content()
+    CompositionLocalProvider(LocalOnGlass provides true) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true),
+        ) {
+            content()
+        }
     }
 }
 
@@ -1399,10 +1396,7 @@ private fun ClearMenu(
     Column(
         Modifier
             .widthIn(min = 200.dp, max = 260.dp)
-            .shadow(12.dp, shape, clip = false, ambientColor = LdColors.colors.shadow, spotColor = LdColors.colors.shadow)
-            .clip(shape)
-            .background(LdColors.colors.menu)
-            .border(1.dp, LdColors.colors.menuBorder, shape)
+            .darkGlass(shape)
             .padding(4.dp),
     ) {
         if (shared) {
@@ -1421,7 +1415,7 @@ private fun MenuRow(
 ) {
     val item = RoundedCornerShape(LdRadius.inner(LdRadius.tile, 4.dp))
     val interaction = remember(label) { MutableInteractionSource() }
-    val ink = if (enabled) LdColors.colors.ink else LdColors.colors.ink.copy(alpha = 0.35f)
+    val ink = if (enabled) LdColors.onGlass else LdColors.onGlass.copy(alpha = 0.35f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1446,21 +1440,17 @@ private fun MenuRow(
 
 @Composable
 private fun ClearLayerDialog(onCancel: () -> Unit, onClear: () -> Unit) {
-    val colors = LdColors.colors
     val shape = RoundedCornerShape(LdRadius.card)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(16.dp, shape, clip = false, ambientColor = colors.shadow, spotColor = colors.shadow)
-            .clip(shape)
-            .background(colors.menu)
-            .border(1.dp, colors.menuBorder, shape)
+            .darkGlass(shape)
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.draw_clear_title), style = LdType.Title, color = colors.ink)
-        Text(stringResource(R.string.draw_clear_body), style = LdType.Body, color = colors.inkMuted)
+        Text(stringResource(R.string.draw_clear_title), style = LdType.Title, color = LdColors.onGlass)
+        Text(stringResource(R.string.draw_clear_body), style = LdType.Body, color = LdColors.onGlassMuted)
         DialogButton(
             text = stringResource(R.string.draw_cancel),
             style = LdButtonStyle.Primary,
@@ -1471,7 +1461,7 @@ private fun ClearLayerDialog(onCancel: () -> Unit, onClear: () -> Unit) {
             text = stringResource(R.string.draw_clear),
             style = LdButtonStyle.Tertiary,
             enabled = true,
-            contentColor = LdColors.inkRed,
+            contentColor = Color(0xFFFFB4AB),
             onClick = onClear,
         )
     }
@@ -1480,14 +1470,15 @@ private fun ClearLayerDialog(onCancel: () -> Unit, onClear: () -> Unit) {
 @Composable
 private fun NoticeChip(notice: Notice) {
     val shape = RoundedCornerShape(LdRadius.chip)
-    val bg = if (notice.ok) LdColors.success else LdColors.colors.menu
-    val fg = if (notice.ok) LdColors.white else LdColors.colors.ink
+    val fg = if (notice.ok) LdColors.white else LdColors.onGlass
+    val plate = if (notice.ok) {
+        Modifier.clip(shape).background(LdColors.success)
+    } else {
+        Modifier.darkGlass(shape)
+    }
     Row(
         modifier = Modifier
-            .shadow(8.dp, shape, clip = false)
-            .clip(shape)
-            .background(bg)
-            .border(1.dp, if (notice.ok) Color.Transparent else LdColors.colors.menuBorder, shape)
+            .then(plate)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1495,7 +1486,7 @@ private fun NoticeChip(notice: Notice) {
         LuIcon(
             if (notice.ok) Lu.Check else Lu.TriangleAlert,
             contentDescription = null,
-            tint = if (notice.ok) LdColors.white else LdColors.inkRed,
+            tint = if (notice.ok) LdColors.white else Color(0xFFFFB4AB),
             size = 18.dp,
         )
         Text(notice.text, style = LdType.Caption, color = fg, maxLines = 2)
@@ -1509,21 +1500,17 @@ private fun UnsavedDialog(
     onSave: () -> Unit,
     onDiscard: () -> Unit,
 ) {
-    val colors = LdColors.colors
     val shape = RoundedCornerShape(LdRadius.card)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(16.dp, shape, clip = false, ambientColor = colors.shadow, spotColor = colors.shadow)
-            .clip(shape)
-            .background(colors.menu)
-            .border(1.dp, colors.menuBorder, shape)
+            .darkGlass(shape)
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.draw_unsaved_title), style = LdType.Title, color = colors.ink)
-        Text(stringResource(R.string.draw_unsaved_body), style = LdType.Body, color = colors.inkMuted)
+        Text(stringResource(R.string.draw_unsaved_title), style = LdType.Title, color = LdColors.onGlass)
+        Text(stringResource(R.string.draw_unsaved_body), style = LdType.Body, color = LdColors.onGlassMuted)
         DialogButton(
             text = stringResource(R.string.draw_keep),
             style = LdButtonStyle.Primary,
@@ -1541,7 +1528,7 @@ private fun UnsavedDialog(
             text = stringResource(R.string.draw_discard),
             style = LdButtonStyle.Tertiary,
             enabled = !busy,
-            contentColor = LdColors.inkRed,
+            contentColor = Color(0xFFFFB4AB),
             onClick = onDiscard,
         )
     }

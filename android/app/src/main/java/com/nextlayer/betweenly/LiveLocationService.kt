@@ -152,14 +152,15 @@ class LiveLocationService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_heart)
+            .setSmallIcon(R.drawable.ic_stat_logo)
+            .setColor(ContextCompat.getColor(this, R.color.notif_accent))
             .setContentTitle(getString(R.string.live_location_on))
             .setContentText(getString(R.string.live_location_on))
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
-            .addAction(R.drawable.ic_stat_heart, getString(R.string.stop), stop)
+            .addAction(R.drawable.ic_stat_logo, getString(R.string.stop), stop)
             .build()
     }
 
@@ -205,11 +206,12 @@ class LiveLocationService : Service() {
         scope.launch {
             val (bat, chg) = readBattery(this@LiveLocationService)
             // DATA-FLOW: live latitude, longitude, accuracy and battery, encrypted "loc", to my partner. No wake ping.
-            Outbox.send(
+            val sent = Outbox.send(
                 applicationContext,
                 Msg.loc(lat, lon, acc, bat, chg, System.currentTimeMillis(), live = true),
                 wake = false,
             )
+            if (sent) BatteryUpdates.markSent(applicationContext, bat, chg)
         }
     }
 
@@ -259,14 +261,16 @@ class LiveLocationService : Service() {
         if (fix != null) {
             val acc = if (fix.hasAccuracy()) fix.accuracy else 0f
             // DATA-FLOW: last latitude and longitude with live=false, encrypted, to my partner, with an empty wake ping so their screen can leave live mode.
-            Outbox.send(
+            val sent = Outbox.send(
                 applicationContext,
                 Msg.loc(fix.latitude, fix.longitude, acc, bat, chg, now, live = false),
                 wake = true,
             )
+            if (sent) BatteryUpdates.markSent(applicationContext, bat, chg)
         } else {
             // DATA-FLOW: battery only, encrypted "bat" message, to my partner, with an empty wake ping. No coordinates (none were taken).
-            Outbox.send(applicationContext, Msg.bat(bat, chg, now), wake = true)
+            val sent = Outbox.send(applicationContext, Msg.bat(bat, chg, now), wake = true)
+            if (sent) BatteryUpdates.markSent(applicationContext, bat, chg)
         }
     }
 

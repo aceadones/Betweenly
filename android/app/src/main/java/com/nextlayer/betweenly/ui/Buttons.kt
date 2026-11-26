@@ -37,9 +37,10 @@ import com.nextlayer.betweenly.ui.icons.LuIcon
 enum class LdButtonStyle { Primary, Secondary, Tertiary }
 
 /**
- * Shared button. Primary is a 56dp accent pill. Secondary is glass with accent
- * text. Tertiary is a text button. [icon] is a small trailing mark only when
- * it names the action. Disabled is a neutral control at 40% alpha.
+ * Shared button. Primary is a 56dp accent pill. Secondary is a light pill with
+ * dark text so it stays readable on dark glass. Tertiary is a text button.
+ * [icon] is a small trailing mark only when it names the action. Disabled is
+ * a neutral control at 40% alpha.
  */
 @Composable
 fun LdButton(
@@ -60,8 +61,8 @@ fun LdButton(
     val onAccent = LdColors.white
     val label = when (style) {
         LdButtonStyle.Primary -> if (enabled) onAccent else c.ink
-        LdButtonStyle.Secondary -> contentColor ?: accent
-        LdButtonStyle.Tertiary -> contentColor ?: c.textPrimary
+        LdButtonStyle.Secondary -> contentColor ?: LdColors.navy
+        LdButtonStyle.Tertiary -> contentColor ?: if (LocalOnGlass.current) LdColors.onGlass else c.textPrimary
     }
     val height = if (style == LdButtonStyle.Tertiary) 48.dp else 56.dp
     var plate = modifier
@@ -91,7 +92,9 @@ fun LdButton(
                 plate.clip(shape).background(c.inkMuted)
             }
         }
-        LdButtonStyle.Secondary -> plate.ldGlass(shape, strong = true)
+        LdButtonStyle.Secondary -> plate
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.92f))
         LdButtonStyle.Tertiary -> plate.clip(shape)
     }
     Box(

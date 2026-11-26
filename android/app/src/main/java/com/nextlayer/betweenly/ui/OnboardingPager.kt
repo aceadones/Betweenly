@@ -22,8 +22,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -46,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
@@ -58,12 +64,16 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.pager.PagerState
 import com.nextlayer.betweenly.R
@@ -225,7 +235,10 @@ private fun StoryArtFrame(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    BoxWithConstraints(
+        modifier.fillMaxWidth().clipToBounds(),
+        contentAlignment = Alignment.Center,
+    ) {
         val side = if (maxHeight.value.isFinite()) minOf(maxWidth, maxHeight) else maxWidth
         Box(Modifier.size(side), content = content)
     }
@@ -426,14 +439,14 @@ private fun PromiseTile(icon: ImageVector, title: Int, body: Int, index: Int) {
             Modifier
                 .size(64.dp)
                 .clip(well)
-                .background(LdColors.primary.copy(alpha = 0.14f)),
+                .background(Color.White.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
-            LuIcon(icon, contentDescription = null, tint = LdColors.colors.textPrimary, size = 28.dp)
+            LuIcon(icon, contentDescription = null, tint = LdColors.onGlass, size = 28.dp)
         }
         Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)
-            Text(stringResource(body), style = MaterialTheme.typography.bodyMedium, color = LdColors.colors.inkMuted)
+            Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = LdColors.onGlass)
+            Text(stringResource(body), style = MaterialTheme.typography.bodyMedium, color = LdColors.onGlassMuted)
         }
     }
 }
@@ -441,64 +454,101 @@ private fun PromiseTile(icon: ImageVector, title: Int, body: Int, index: Int) {
 @Composable
 fun YouPage(name: String, onName: (String) -> Unit, onNext: () -> Unit) {
     val ready = name.trim().isNotEmpty()
-    StoryBody(
-        art = {
-            StoryAsset(
-                res = R.drawable.onb_name,
-                modifier = Modifier.fillMaxSize(),
-                scale = ContentScale.Fit,
-            ) {
-                IllustrationTile(Lu.User, Modifier.fillMaxSize())
-            }
-        },
-        actions = {
-            PrimaryPill(
-                text = stringResource(R.string.onboarding_continue),
-                onClick = onNext,
-                enabled = ready,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        },
+    val scroll = rememberScrollState()
+    val bring = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val imeOpen = WindowInsets.ime.getBottom(density) > 0
+    var fieldFocused by remember { mutableStateOf(false) }
+    val artHeight by animateDpAsState(
+        targetValue = if (imeOpen) 72.dp else 168.dp,
+        animationSpec = Motion.tween(Motion.MED, Motion.easeOut),
+        label = "youArt",
+    )
+    LaunchedEffect(imeOpen, fieldFocused) {
+        if (imeOpen && fieldFocused) bring.bringIntoView()
+    }
+    // One scroll above the keyboard. The pager used to keep a weighted illustration
+    // and pad only the button, so the field collapsed under the IME.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
     ) {
-        Text(
-            stringResource(R.string.onb_you_title),
-            modifier = Modifier.storyEnter(0),
-            style = LdType.PageTitle,
-            color = LdColors.colors.ink,
-        )
-        Text(
-            stringResource(R.string.onb_you_hint),
-            modifier = Modifier.storyEnter(1),
-            style = MaterialTheme.typography.bodyLarge,
-            color = LdColors.colors.inkMuted,
-        )
-        HeroPhoto(
-            name = name.ifBlank { stringResource(R.string.partner_fallback) },
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(artHeight)
+                    .clipToBounds(),
+                contentAlignment = Alignment.Center,
+            ) {
+                StoryAsset(
+                    res = R.drawable.onb_name,
+                    modifier = Modifier.fillMaxSize(),
+                    scale = ContentScale.Fit,
+                ) {
+                    IllustrationTile(Lu.User, Modifier.fillMaxSize())
+                }
+            }
+            Text(
+                stringResource(R.string.onb_you_title),
+                style = LdType.PageTitle,
+                color = LdColors.colors.ink,
+            )
+            Text(
+                stringResource(R.string.onb_you_hint),
+                style = MaterialTheme.typography.bodyLarge,
+                color = LdColors.colors.inkMuted,
+            )
+            HeroPhoto(
+                name = name.ifBlank { stringResource(R.string.partner_fallback) },
+                avatar = if (imeOpen) 96.dp else 132.dp,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+            Text(
+                stringResource(R.string.photo_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = LdColors.colors.inkMuted,
+            )
+            UnderlineNameField(
+                value = name,
+                onValue = onName,
+                label = stringResource(R.string.name_label),
+                onDone = { if (ready) onNext() },
+                onFocus = { focused ->
+                    fieldFocused = focused
+                    if (focused) scope.launch { bring.bringIntoView() }
+                },
+                modifier = Modifier.bringIntoViewRequester(bring),
+            )
+            Text(
+                stringResource(R.string.name_help),
+                style = MaterialTheme.typography.bodySmall,
+                color = LdColors.colors.inkMuted,
+            )
+        }
+        PrimaryPill(
+            text = stringResource(R.string.onboarding_continue),
+            onClick = onNext,
+            enabled = ready,
             modifier = Modifier
-                .storyEnter(2)
-                .align(Alignment.CenterHorizontally),
-        )
-        Text(
-            stringResource(R.string.photo_help),
-            style = MaterialTheme.typography.bodySmall,
-            color = LdColors.colors.inkMuted,
-        )
-        UnderlineNameField(
-            value = name,
-            onValue = onName,
-            label = stringResource(R.string.name_label),
-            onDone = { if (ready) onNext() },
-        )
-        Text(
-            stringResource(R.string.name_help),
-            style = MaterialTheme.typography.bodySmall,
-            color = LdColors.colors.inkMuted,
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
         )
     }
 }
 
 @Composable
-private fun HeroPhoto(name: String, modifier: Modifier = Modifier) {
+private fun HeroPhoto(name: String, avatar: Dp = 148.dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val revision by Store.changes.collectAsState()
@@ -520,9 +570,9 @@ private fun HeroPhoto(name: String, modifier: Modifier = Modifier) {
         }
     }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
+            Box(
             Modifier
-                .size(156.dp)
+                .size(avatar + 12.dp)
                 .clickable(
                     enabled = !busy,
                     onClickLabel = stringResource(R.string.photo_choose),
@@ -537,7 +587,7 @@ private fun HeroPhoto(name: String, modifier: Modifier = Modifier) {
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            RoundAvatar(revision, { Store.myAvatar(context) }, name, 148.dp)
+            RoundAvatar(revision, { Store.myAvatar(context) }, name, avatar)
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)

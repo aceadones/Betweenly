@@ -38,7 +38,7 @@ class ChatMessage(
 /**
  * Chat history. One SQLite table in app-private storage. Each row is an id,
  * a timestamp, a direction (`in` or `out`), a status
- * (`sending`, `sent`, `failed`, `received`), and the message JSON sealed with
+ * (`sending`, `sent`, `delivered`, `read`, `failed`, `received`), and the message JSON sealed with
  * [Secure.encrypt]. The database file by itself is not readable.
  *
  * Attachment bytes are sealed the same way and stored at
@@ -57,8 +57,15 @@ class ChatMessage(
 object ChatStore {
     const val SENDING = "sending"
     const val SENT = "sent"
+    const val DELIVERED = "delivered"
+    const val READ = "read"
     const val FAILED = "failed"
     const val RECEIVED = "received"
+
+    /** Local clock when the partner's last chat message was stored. Not sent. */
+    @Volatile
+    var partnerHeardAt: Long = 0L
+        private set
     const val DIR_IN = "in"
     const val DIR_OUT = "out"
 
@@ -245,6 +252,38 @@ object ChatStore {
         val safe = normalizeId(id) ?: return false
         if (!statusOk(status)) return false
         return edit(context) { setStatusLocked(context, safe, status) } == true
+    }
+
+    /**
+     * Moves one of this phone's messages forward: sent, then delivered, then read.
+     * A missing row, a partner message, a failure, or a step backward is left as it is.
+     * Old rows with an empty or unknown status are not promoted and do not throw.
+     */
+    fun advanceStatus(context: Context, id: String, status: String): Boolean {
+        val safe = normalizeId(id) ?: return false
+        if (status != DELIVERED && status != READ && status != SENT) return false
+        return edit(context) { advanceStatusLocked(context, safe, status) } == true
+    }
+
+    /** Partner delivery or read receipt. Ids that are not ours are ignored. */
+    fun applyReceipt(context: Context, json: JSONObject, read: Boolean) {
+        val ids = json.optJSONArray("ids") ?: return
+        val next = if (read) READ else DELIVERED
+        val cap = minOf(ids.length(), 80)
+        for (i in 0 until cap) {
+            advanceStatus(context, ids.optString(i), next)
+        }
+    }
+
+    /**
+     * Local-only flag on a stored message (`sv` seen receipt sent, `dv` delivery receipt sent).
+     * Never put on the wire. See [com.nextlayer.betweenly.ui.ChatController].
+     */
+    fun markLocal(context: Context, ids: List<String>, key: String): Boolean {
+        if (key != "sv" && key != "dv") return false
+        val clean = ids.mapNotNull { normalizeId(it) }.distinct()
+        if (clean.isEmpty()) return false
+        return edit(context) { markLocalLocked(context, clean, key) } == true
     }
 
     fun updateJson(context: Context, id: String, json: JSONObject): Boolean {
@@ -520,6 +559,7 @@ object ChatStore {
                 unreadMut.value = 0
             }
             clearEarlyLocked(app)
+            partnerHeardAt = 0L
             bump()
         }
         try {
@@ -574,8 +614,38 @@ object ChatStore {
         }
         val blob = seal(json) ?: return false
         if (!insertRow(database, id, ts, DIR_IN, RECEIVED, blob)) return false
+        partnerHeardAt = System.currentTimeMillis()
         bump()
         return true
+    }
+
+    private fun advanceStatusLocked(context: Context, id: String, status: String): Boolean {
+        val database = db(context) ?: return false
+        val current = readMessage(database, id) ?: return false
+        if (!current.outgoing) return false
+        val type = current.json.optString("t")
+        if (type == "gone" || type == "note") return false
+        if (current.status == FAILED) return false
+        if (statusRank(status) <= statusRank(current.status)) return false
+        val values = ContentValues().apply { put("status", status) }
+        if (database.update(TABLE, values, "id=?", arrayOf(id)) <= 0) return false
+        bump()
+        return true
+    }
+
+    private fun markLocalLocked(context: Context, ids: List<String>, key: String): Boolean {
+        val database = db(context) ?: return false
+        var changed = false
+        for (id in ids) {
+            val current = readMessage(database, id) ?: continue
+            if (current.json.optInt(key) == 1) continue
+            current.json.put(key, 1)
+            val blob = seal(current.json) ?: continue
+            val values = ContentValues().apply { put("body", blob) }
+            if (database.update(TABLE, values, "id=?", arrayOf(id)) > 0) changed = true
+        }
+        if (changed) bump()
+        return changed
     }
 
     private fun setStatusLocked(context: Context, id: String, status: String): Boolean {
@@ -593,6 +663,8 @@ object ChatStore {
         val current = readMessage(database, id) ?: return false
         if (current.json.optString("t") == "gone") return false
         if (current.json.optInt("gal") == 1) json.put("gal", 1)
+        if (current.json.optInt("sv") == 1) json.put("sv", 1)
+        if (current.json.optInt("dv") == 1) json.put("dv", 1)
         if (json.optString("rx").isEmpty()) {
             val existing = current.json.optString("rx")
             if (existing.isNotEmpty()) json.put("rx", existing)
@@ -836,7 +908,16 @@ object ChatStore {
     }
 
     private fun statusOk(status: String): Boolean =
-        status == SENDING || status == SENT || status == FAILED || status == RECEIVED
+        status == SENDING || status == SENT || status == DELIVERED || status == READ ||
+            status == FAILED || status == RECEIVED
+
+    /** Higher means further along. Unknown and empty statuses stay at zero so old rows do not crash. */
+    private fun statusRank(status: String): Int = when (status) {
+        READ -> 3
+        DELIVERED -> 2
+        SENT -> 1
+        else -> 0
+    }
 
     private fun bump() {
         written.update { it + 1 }

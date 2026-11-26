@@ -294,6 +294,7 @@ object Inbox {
                 "ringack" -> RingController.onPartnerAck(context, json.optString("rid"))
                 "profile" -> applyProfile(context, json)
                 "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
+                "dlv", "seen" -> ChatInbound.handle(context, json)
                 "unsend", "wall" -> ChatInbound.handle(context, json)
                 "draw" -> DrawInbound.handle(context, json)
                 "music", "plist" -> DuetBridge.deliver(context, json)
@@ -309,17 +310,19 @@ object Inbox {
         if (lat.isNaN() || lon.isNaN() || lat !in -90.0..90.0 || lon !in -180.0..180.0) return
         val prev = Store.partnerLoc(context)
         val now = System.currentTimeMillis()
+        val bat = if (json.has("bat")) json.optInt("bat", -1) else (prev?.bat ?: -1)
         Store.setPartnerLoc(
             context,
             PartnerLoc(
                 lat = lat,
                 lon = lon,
                 acc = json.optDouble("acc", 0.0).toFloat(),
-                bat = if (json.has("bat")) json.optInt("bat", -1) else (prev?.bat ?: -1),
+                bat = bat,
                 chg = if (json.has("chg")) json.optBoolean("chg", false) else (prev?.chg ?: false),
                 ts = json.optLong("ts", now),
                 live = json.optBoolean("live", false),
                 lastSeen = now,
+                batSeen = if (json.has("bat") && bat in 0..100) now else (prev?.batSeen ?: 0L),
             ),
         )
         Store.setPartnerSharing(context, true)
@@ -328,17 +331,19 @@ object Inbox {
     private fun applyBat(context: Context, json: JSONObject) {
         val prev = Store.partnerLoc(context)
         val now = System.currentTimeMillis()
+        val bat = json.optInt("bat", prev?.bat ?: -1)
         Store.setPartnerLoc(
             context,
             PartnerLoc(
                 lat = prev?.lat,
                 lon = prev?.lon,
                 acc = prev?.acc,
-                bat = json.optInt("bat", prev?.bat ?: -1),
+                bat = bat,
                 chg = if (json.has("chg")) json.optBoolean("chg", false) else (prev?.chg ?: false),
-                ts = json.optLong("ts", now),
-                live = false,
-                lastSeen = now,
+                ts = prev?.ts ?: json.optLong("ts", now),
+                live = prev?.live ?: false,
+                lastSeen = prev?.lastSeen ?: 0L,
+                batSeen = if (bat in 0..100) now else (prev?.batSeen ?: 0L),
             ),
         )
     }

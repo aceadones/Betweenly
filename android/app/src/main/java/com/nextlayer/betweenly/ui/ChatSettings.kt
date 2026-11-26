@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,6 +71,8 @@ fun ChatSettings(onBack: () -> Unit) {
     val context = LocalContext.current
     val revision by Store.changes.collectAsState()
     val autoSave = remember(revision) { Store.chatAutoSaveMedia(context) }
+    val receipts = remember(revision) { Store.chatReadReceipts(context) }
+    val hideActivity = remember(revision) { Store.chatHideActivity(context) }
     BackHandler(onBack = onBack)
     Scaffold(
         containerColor = Color.Transparent,
@@ -88,6 +93,20 @@ fun ChatSettings(onBack: () -> Unit) {
                 checked = autoSave,
                 enabled = true,
                 onCheckedChange = { Store.setChatAutoSaveMedia(context, it) },
+            )
+            ToggleRow(
+                title = stringResource(R.string.chat_receipts),
+                help = stringResource(R.string.chat_receipts_help),
+                checked = receipts,
+                enabled = true,
+                onCheckedChange = { Store.setChatReadReceipts(context, it) },
+            )
+            ToggleRow(
+                title = stringResource(R.string.chat_hide_activity),
+                help = stringResource(R.string.chat_hide_activity_help),
+                checked = hideActivity,
+                enabled = true,
+                onCheckedChange = { Store.setChatHideActivity(context, it) },
             )
         }
     }
@@ -174,40 +193,48 @@ fun ChatBackground(onBack: () -> Unit) {
         }
     }
     BackHandler(onBack = onBack)
-    Scaffold(
-        containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets.safeDrawing,
-    ) { padding ->
+    val swatch = if (shown.kind == "color") ChatTheme.wallpapers.getOrNull(shown.color) else null
+    val dim = wallScrim(shown.kind, swatch)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        AppBackground(Modifier.fillMaxSize())
+        ChatWallBackdrop(
+            wall = shown,
+            modifier = Modifier.fillMaxSize(),
+            previewJpeg = previewJpeg,
+        )
+        if (dim > 0f) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        }
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .heightIn(max = maxHeight * 0.62f)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(12.dp)
+                .darkGlass(RoundedCornerShape(LdRadius.card))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(16.dp),
         ) {
+            CompositionLocalProvider(LocalOnGlass provides true) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ScreenHeader(stringResource(R.string.chat_background), onBack)
-            Text(stringResource(R.string.chat_wall_preview), style = MaterialTheme.typography.titleMedium)
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-                    .clip(RoundedCornerShape(LdRadius.card)),
-            ) {
-                AppBackground(Modifier.fillMaxSize())
-                ChatWallBackdrop(
-                    wall = shown,
-                    modifier = Modifier.fillMaxSize(),
-                    previewJpeg = previewJpeg,
-                )
-            }
+            Text(
+                stringResource(R.string.chat_wall_preview),
+                style = MaterialTheme.typography.titleMedium,
+                color = LdColors.onGlassMuted,
+            )
             WallRow(
                 label = stringResource(R.string.chat_wallpaper_default),
                 selected = shown.kind == "default",
                 enabled = !busy,
                 onClick = { publish("default", 0) { ChatWallpaperSync.publishDefault(context) } },
             )
-            Text(stringResource(R.string.chat_wallpaper), style = MaterialTheme.typography.titleMedium)
+            Text(
+                stringResource(R.string.chat_wallpaper),
+                style = MaterialTheme.typography.titleMedium,
+                color = LdColors.onGlass,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChatTheme.wallpapers.forEachIndexed { index, color ->
                     val selected = shown.kind == "color" && shown.color == index
@@ -220,7 +247,7 @@ fun ChatBackground(onBack: () -> Unit) {
                             .background(color)
                             .border(
                                 width = if (selected) 2.dp else 0.dp,
-                                color = LdColors.primary,
+                                color = if (selected) LdColors.white else LdColors.clear,
                                 shape = CircleShape,
                             )
                             .clickable(
@@ -256,23 +283,42 @@ fun ChatBackground(onBack: () -> Unit) {
                 },
             )
             if (busy) {
-                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = LdColors.onGlass,
+                )
             }
             if (failed) {
                 Text(
                     stringResource(R.string.chat_wall_failed),
-                    color = MaterialTheme.colorScheme.error,
+                    color = Color(0xFFFFB4AB),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
             Spacer(Modifier.height(8.dp))
+            }
+            }
         }
     }
 }
 
 /**
+ * How much black sits on a wallpaper so controls stay readable without hiding it.
+ * Default (the sky) needs none. Photos stay visible at 18%.
+ */
+fun wallScrim(kind: String, swatch: Color?): Float = when (kind) {
+    "image" -> 0.18f
+    "color" -> {
+        val tone = swatch?.let { it.red * 0.2126f + it.green * 0.7152f + it.blue * 0.0722f } ?: 0.5f
+        if (tone > 0.65f) 0.14f else 0.06f
+    }
+    else -> 0f
+}
+
+/**
  * The shared background behind the messages. Default is transparent so the
- * sky shows through. A photo gets a light scrim so bubbles stay readable.
+ * sky shows through. The chat and the picker add [wallScrim] themselves.
  */
 @Composable
 fun ChatWallBackdrop(
@@ -362,7 +408,6 @@ private fun WallPaint(token: WallToken) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.12f)))
         }
     }
 }
@@ -393,11 +438,11 @@ private fun WallRow(
         Text(
             label,
             modifier = Modifier.weight(1f),
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
             style = MaterialTheme.typography.bodyLarge,
         )
         if (selected) {
-            LuIcon(Lu.Check, contentDescription = null, tint = LdColors.primary, size = 20.dp)
+            LuIcon(Lu.Check, contentDescription = null, tint = LdColors.onGlass, size = 20.dp)
         }
     }
 }

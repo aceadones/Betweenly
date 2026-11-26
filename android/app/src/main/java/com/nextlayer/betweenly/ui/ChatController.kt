@@ -12,25 +12,41 @@ import com.nextlayer.betweenly.Msg
 import com.nextlayer.betweenly.Outbox
 import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.Store
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
 import org.json.JSONObject
 import android.util.Base64
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Sends chat messages. [sendMedia] is what [android.app.Activity] calls with a
- * [CameraScreen] result: `ChatController.sendMedia(uri, isVideo)`. The context
- * is the one [ChatScreen] installed before the camera opened. The overload that
- * takes a [Context] works even if the chat screen is not up.
+ * Sends chat messages. The in-app camera calls [stageCapture]; the chat screen
+ * shows a preview and then [sendDrafts]. [sendMedia] still sends immediately
+ * for a caller that already confirmed. The context is the one [ChatScreen]
+ * installed before the camera opened.
  *
  * DATA-FLOW: text, link cards, reactions, unsends, and attachment pointers
  * (file id + key) leave through [Outbox.send]. File bytes leave through
  * [FileTransfer]. Link pages are fetched only on this phone; see [LinkPreview].
  * Shared wallpaper is sent by [ChatWallpaperSync], not here.
  */
+/** One item waiting in the send preview. Bytes win over [uri] when both are set. */
+class OutgoingDraft(
+    val uri: Uri?,
+    val bytes: ByteArray?,
+    val mime: String,
+    val name: String,
+    val video: Boolean,
+    val asFile: Boolean,
+)
+
+/** A camera photo or video held until the chat preview sends or drops it. */
+class StagedCapture(val uri: Uri, val video: Boolean)
+
 object ChatController {
     private val notesMut = MutableSharedFlow<Int>(extraBufferCapacity = 8)
 
@@ -61,6 +77,45 @@ object ChatController {
 
     fun peekReply(): String? = synchronized(replyLock) { armedReply }
 
+    private val stageLock = Any()
+    private val staged = ArrayDeque<StagedCapture>()
+
+    /** Camera confirmed a clip. The chat screen turns this into a preview, not a send. */
+    fun stageCapture(uri: Uri, video: Boolean) {
+        synchronized(stageLock) {
+            staged.add(StagedCapture(uri, video))
+            while (staged.size > 6) staged.removeFirst()
+        }
+    }
+
+    fun consumeCaptures(): List<StagedCapture> = synchronized(stageLock) {
+        val copy = staged.toList()
+        staged.clear()
+        copy
+    }
+
+    private var heldDrafts: List<ChatDraft> = emptyList()
+    private var heldCaption: String = ""
+    private var heldIndex: Int = 0
+
+    /**
+     * The camera route replaces the chat screen, so an open preview is kept
+     * here until the chat comes back. Not written to disk.
+     */
+    fun holdPreview(drafts: List<ChatDraft>, caption: String, index: Int) {
+        heldDrafts = drafts
+        heldCaption = caption
+        heldIndex = index
+    }
+
+    fun takePreview(): Triple<List<ChatDraft>, String, Int> {
+        val out = Triple(heldDrafts, heldCaption, heldIndex)
+        heldDrafts = emptyList()
+        heldCaption = ""
+        heldIndex = 0
+        return out
+    }
+
     /**
      * The id to put in `"re"`. An explicit id wins. Otherwise the armed reply
      * is used. Either way the armed reply is cleared so the next send is plain.
@@ -77,7 +132,7 @@ object ChatController {
         sendMedia(context, uri, isVideo, replyId = null)
     }
 
-    fun sendMedia(context: Context, uri: Uri, isVideo: Boolean, replyId: String? = null) {
+    fun sendMedia(context: Context, uri: Uri, isVideo: Boolean, replyId: String? = null, caption: String = "") {
         install(context)
         val reply = resolveReply(replyId)
         AppScope.scope.launch {
@@ -88,23 +143,23 @@ object ChatController {
             } catch (_: Exception) {
                 MediaResult.Failed
             }
-            deliver(context, result, reply)
+            deliver(context, result, reply, caption)
         }
     }
 
     /** Gallery image or video. [replyId] is quoted on the attachment when it is a real message id. */
-    fun sendPicked(context: Context, uri: Uri, replyId: String? = null) {
+    fun sendPicked(context: Context, uri: Uri, replyId: String? = null, caption: String = "") {
         install(context)
         val mime = try {
             context.contentResolver.getType(uri).orEmpty()
         } catch (_: Exception) {
             ""
         }
-        sendMedia(context, uri, isVideo = mime.startsWith("video/"), replyId = replyId)
+        sendMedia(context, uri, isVideo = mime.startsWith("video/"), replyId = replyId, caption = caption)
     }
 
     /** Any file, sent as-is up to 20 MB. */
-    fun sendDocument(context: Context, uri: Uri, replyId: String? = null) {
+    fun sendDocument(context: Context, uri: Uri, replyId: String? = null, caption: String = "") {
         install(context)
         val reply = resolveReply(replyId)
         AppScope.scope.launch {
@@ -115,12 +170,12 @@ object ChatController {
             } catch (_: Exception) {
                 MediaResult.Failed
             }
-            deliver(context, result, reply)
+            deliver(context, result, reply, caption)
         }
     }
 
     /** Keyboard sticker, GIF, or image. [bytes] are the original file bytes. */
-    fun sendRich(context: Context, bytes: ByteArray, mime: String, replyId: String? = null) {
+    fun sendRich(context: Context, bytes: ByteArray, mime: String, replyId: String? = null, caption: String = "") {
         install(context)
         val reply = resolveReply(replyId)
         AppScope.scope.launch {
@@ -131,8 +186,77 @@ object ChatController {
             } catch (_: Exception) {
                 MediaResult.Failed
             }
-            deliver(context, result, reply)
+            deliver(context, result, reply, caption)
         }
+    }
+
+    /**
+     * Preview sheet. Items go out one after another. The caption rides on the
+     * last item. The reply quote rides on the first.
+     */
+    fun sendDrafts(context: Context, drafts: List<OutgoingDraft>, caption: String, replyId: String?) {
+        if (drafts.isEmpty()) return
+        install(context)
+        val reply = resolveReply(replyId)
+        AppScope.scope.launch {
+            drafts.forEachIndexed { index, draft ->
+                val cap = if (index == drafts.lastIndex) caption else ""
+                val quoted = if (index == 0) reply else null
+                val result = try {
+                    when {
+                        draft.bytes != null && draft.asFile -> ChatMedia.asAttachment(
+                            draft.bytes,
+                            draft.mime.ifBlank { "application/octet-stream" },
+                            "file",
+                            draft.name.ifBlank { "file" },
+                        )
+                        draft.bytes != null -> ChatMedia.fromBytes(draft.bytes, draft.mime)
+                        draft.uri != null && draft.asFile -> ChatMedia.fromUri(context, draft.uri, asVideo = false, asFile = true)
+                        draft.uri != null -> ChatMedia.fromUri(context, draft.uri, asVideo = draft.video, asFile = false)
+                        else -> MediaResult.Failed
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    MediaResult.Failed
+                }
+                deliver(context, result, quoted, cap)
+            }
+        }
+    }
+
+    /** GIF, sticker, or other bytes that must keep [kind]. */
+    fun sendKind(
+        context: Context,
+        bytes: ByteArray,
+        mime: String,
+        kind: String,
+        name: String,
+        replyId: String? = null,
+        durationMs: Int = 0,
+        wave: String = "",
+    ) {
+        install(context)
+        val reply = resolveReply(replyId)
+        AppScope.scope.launch {
+            val result = try {
+                ChatMedia.asAttachment(bytes, mime, kind, name, durationMs, wave)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                MediaResult.Failed
+            }
+            deliver(context, result, reply, "")
+        }
+    }
+
+    /** A saved drawing. Resized like any other photo. */
+    fun sendLocalImage(context: Context, bytes: ByteArray, mime: String, replyId: String? = null) {
+        sendRich(context, bytes, mime, replyId, caption = "")
+    }
+
+    fun sendVoice(context: Context, bytes: ByteArray, durationMs: Int, wave: String, replyId: String? = null) {
+        sendKind(context, bytes, "audio/mp4", "voice", "voice.m4a", replyId, durationMs, wave)
     }
 
     /** True once the message is queued. The field should be cleared only after that. */
@@ -308,19 +432,20 @@ object ChatController {
         notesMut.tryEmit(resId)
     }
 
-    private suspend fun deliver(context: Context, result: MediaResult, reply: String?) {
+    private suspend fun deliver(context: Context, result: MediaResult, reply: String?, caption: String = "") {
         when (result) {
             is MediaResult.TooLarge -> note(if (result.video) R.string.chat_too_large else R.string.chat_file_too_large)
             is MediaResult.Failed -> note(R.string.chat_attach_failed)
-            is MediaResult.Ok -> sendPrepared(context, result.prepared, reply)
+            is MediaResult.Ok -> sendPrepared(context, result.prepared, reply, caption)
         }
     }
 
-    private suspend fun sendPrepared(context: Context, prepared: PreparedMedia, reply: String?) {
+    private suspend fun sendPrepared(context: Context, prepared: PreparedMedia, reply: String?, caption: String = "") {
         if (!Store.isPaired(context)) return
         val id = ChatStore.newId()
         val ts = System.currentTimeMillis()
         val json = attJson(id, ts, prepared, fid = "", key = "")
+        putCaption(json, prepared.kind, caption)
         putReply(json, reply)
         if (!fit(json)) {
             note(R.string.chat_attach_failed)
@@ -454,6 +579,16 @@ object ChatController {
             .put("h", prepared.height)
             .put("thumb", prepared.thumb)
             .put("text", "")
+            .also { json ->
+                if (prepared.durationMs > 0) json.put("dur", prepared.durationMs)
+                if (prepared.wave.isNotEmpty()) json.put("wave", prepared.wave)
+            }
+    }
+
+    private fun putCaption(json: JSONObject, kind: String, caption: String) {
+        if (kind == "sticker" || kind == "gif" || kind == "voice") return
+        val clean = caption.trim().filter { it >= ' ' || it == '\n' }.take(2_000)
+        if (clean.isNotEmpty()) json.put("text", clean)
     }
 
     private fun putReply(json: JSONObject, replyId: String?) {
@@ -512,6 +647,8 @@ object ChatController {
         copy.remove("rx")
         copy.remove("mx")
         copy.remove("gal")
+        copy.remove("sv")
+        copy.remove("dv")
         return copy
     }
 
@@ -592,4 +729,129 @@ object ChatController {
     private const val PREFS = "app"
     private const val UNSEND = "chat_unsend_pending"
     private val unsendLock = Any()
+
+    private val receiptLock = Any()
+    private val dlvQueue = LinkedHashSet<String>()
+    private val seenQueue = LinkedHashSet<String>()
+    private val seenSent = HashSet<String>()
+    private var dlvJob: Job? = null
+    private var seenJob: Job? = null
+
+    /** Incoming message is stored. A short wait batches ids into one encrypted receipt. */
+    fun noteDelivered(context: Context, id: String) {
+        val safe = ChatStore.normalizeId(id) ?: return
+        armReceipt(context.applicationContext, safe, read = false)
+    }
+
+    /**
+     * Messages on screen. Nothing is sent when read receipts are off.
+     * Ids already acknowledged this session are skipped.
+     */
+    fun noteSeen(context: Context, ids: List<String>) {
+        if (!Store.chatReadReceipts(context)) return
+        val app = context.applicationContext
+        for (id in ids) {
+            val safe = ChatStore.normalizeId(id) ?: continue
+            if (safe in seenSent) continue
+            armReceipt(app, safe, read = true)
+        }
+    }
+
+    /** Rows that already have a local seen flag, so a reopen does not send them again. */
+    fun rememberSeen(ids: Collection<String>) {
+        synchronized(receiptLock) {
+            ids.mapNotNull { ChatStore.normalizeId(it) }.forEach { seenSent.add(it) }
+        }
+    }
+
+    /** Delivery receipts that never left, for messages stored before this open. */
+    fun syncDelivery(context: Context, messages: List<ChatMessage>) {
+        val app = context.applicationContext
+        for (message in messages) {
+            if (message.outgoing) continue
+            val type = message.json.optString("t")
+            if (type != "chat" && type != "att" && type != "link") continue
+            if (message.json.optInt("dv") == 1) continue
+            noteDelivered(app, message.id)
+        }
+        rememberSeen(messages.filter { it.json.optInt("sv") == 1 }.map { it.id })
+    }
+
+    private fun armReceipt(context: Context, id: String, read: Boolean) {
+        synchronized(receiptLock) {
+            val queue = if (read) seenQueue else dlvQueue
+            queue.add(id)
+            val running = if (read) seenJob?.isActive == true else dlvJob?.isActive == true
+            if (running) return
+            val job = AppScope.scope.launch {
+                delay(280)
+                flushReceipts(context, read)
+            }
+            if (read) seenJob = job else dlvJob = job
+        }
+    }
+
+    private suspend fun flushReceipts(context: Context, read: Boolean) {
+        var misses = 0
+        while (true) {
+            if (read && !Store.chatReadReceipts(context)) {
+                synchronized(receiptLock) {
+                    seenQueue.clear()
+                    seenJob = null
+                }
+                return
+            }
+            val batch = synchronized(receiptLock) {
+                val queue = if (read) seenQueue else dlvQueue
+                if (queue.isEmpty()) {
+                    if (read) seenJob = null else dlvJob = null
+                    emptyList()
+                } else {
+                    val taken = queue.take(40)
+                    taken.forEach { queue.remove(it) }
+                    taken
+                }
+            }
+            if (batch.isEmpty()) return
+            val json = JSONObject().put("t", if (read) "seen" else "dlv")
+            val ids = JSONArray()
+            batch.forEach { ids.put(it) }
+            json.put("ids", ids)
+            val ok = transmitReceipt(context, json)
+            if (!ok) {
+                synchronized(receiptLock) {
+                    val queue = if (read) seenQueue else dlvQueue
+                    batch.forEach { queue.add(it) }
+                }
+                misses++
+                if (misses >= 3) {
+                    synchronized(receiptLock) {
+                        if (read) seenJob = null else dlvJob = null
+                    }
+                    return
+                }
+                delay(2_000)
+                continue
+            }
+            misses = 0
+            if (read) {
+                synchronized(receiptLock) { seenSent.addAll(batch) }
+                ChatStore.markLocal(context, batch, "sv")
+            } else {
+                ChatStore.markLocal(context, batch, "dv")
+            }
+        }
+    }
+
+    private suspend fun transmitReceipt(context: Context, json: JSONObject): Boolean {
+        if (Msg.pad(json) == null) return false
+        return try {
+            // DATA-FLOW: delivery or read receipt (message ids only, no text and no names), padded and sealed, posted to my relay outbox. wake is off, so no FCM ping. The relay stores ciphertext only.
+            Outbox.send(context, json, wake = false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

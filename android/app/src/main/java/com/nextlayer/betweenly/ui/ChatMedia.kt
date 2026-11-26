@@ -24,6 +24,8 @@ class PreparedMedia(
     val width: Int,
     val height: Int,
     val thumb: String,
+    val durationMs: Int = 0,
+    val wave: String = "",
 )
 
 /** Outcome of reading something the user picked or the keyboard inserted. */
@@ -71,6 +73,45 @@ object ChatMedia {
             )
             if (!encoded.bitmap.isRecycled) encoded.bitmap.recycle()
             result
+        } catch (_: Exception) {
+            MediaResult.Failed
+        } catch (_: OutOfMemoryError) {
+            MediaResult.Failed
+        }
+    }
+
+    /**
+     * Bytes already in memory, sent as [kind] without re-encoding.
+     * Used for GIFs, stickers, voice notes, and other files that must keep their type.
+     */
+    fun asAttachment(
+        bytes: ByteArray,
+        mime: String,
+        kind: String,
+        name: String,
+        durationMs: Int = 0,
+        wave: String = "",
+    ): MediaResult {
+        if (bytes.isEmpty()) return MediaResult.Failed
+        if (bytes.size > MAX_BYTES) return MediaResult.TooLarge(video = false)
+        return try {
+            val image = mime.startsWith("image/")
+            val (w, h) = if (image) bounds(bytes) else 0 to 0
+            val thumb = if (image) thumbFromBytes(bytes) else ""
+            val cleanWave = wave.filter { it == ',' || it.isDigit() }.take(240)
+            MediaResult.Ok(
+                PreparedMedia(
+                    bytes,
+                    cleanMime(mime),
+                    kind.ifBlank { "file" },
+                    name.ifBlank { "file" },
+                    w,
+                    h,
+                    thumb,
+                    durationMs.coerceIn(0, 5 * 60 * 1000),
+                    cleanWave,
+                ),
+            )
         } catch (_: Exception) {
             MediaResult.Failed
         } catch (_: OutOfMemoryError) {

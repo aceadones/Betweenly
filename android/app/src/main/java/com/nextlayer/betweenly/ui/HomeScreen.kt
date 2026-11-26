@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -32,13 +35,13 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,15 +59,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.tasks.Tasks
-import com.nextlayer.betweenly.BuildConfig
 import com.nextlayer.betweenly.LocationSharing
 import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.RingController
 import com.nextlayer.betweenly.RingState
 import com.nextlayer.betweenly.Store
-import com.nextlayer.betweenly.UpdateCheck
-import com.nextlayer.betweenly.UpdateInfo
-import com.nextlayer.betweenly.Updater
+import com.nextlayer.betweenly.UpdatePrompt
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.ui.icons.LuIcon
 import java.util.Locale
@@ -92,28 +92,13 @@ fun HomeScreen(onTrack: () -> Unit) {
     val revision by Store.changes.collectAsState()
     val ring by RingController.state.collectAsState()
     val now = rememberNow()
-    var versionCode by rememberSaveable { mutableStateOf(0) }
-    var versionName by rememberSaveable { mutableStateOf("") }
-    var notes by rememberSaveable { mutableStateOf("") }
+    val offer by UpdatePrompt.info.collectAsState()
     var pingToken by remember { mutableIntStateOf(0) }
     var pingOn by remember { mutableStateOf(false) }
     var marker by remember { mutableStateOf<Bitmap?>(null) }
     var distanceText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         RingController.ensure(context)
-        val result = try {
-            // DATA-FLOW: update metadata, from the relay, not encrypted, no user data.
-            Updater.check(context)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            UpdateCheck.Error
-        }
-        if (result is UpdateCheck.Available) {
-            versionCode = result.info.versionCode
-            versionName = result.info.versionName
-            notes = result.info.notes
-        }
     }
     LaunchedEffect(pingToken) {
         if (pingToken == 0) return@LaunchedEffect
@@ -132,11 +117,6 @@ fun HomeScreen(onTrack: () -> Unit) {
             }
         }
     }
-    val update = if (versionCode > BuildConfig.VERSION_CODE) {
-        UpdateInfo(versionCode, versionName, "", notes)
-    } else {
-        null
-    }
     val loc = remember(revision) { Store.partnerLoc(context) }
     val name = remember(revision) {
         Store.partnerName(context).ifBlank { context.getString(R.string.partner_fallback) }
@@ -149,10 +129,17 @@ fun HomeScreen(onTrack: () -> Unit) {
     }
     val bat = loc?.bat
     val batteryKnown = bat != null && bat in 0..100
+    val batterySeen = if (loc == null) 0L else batterySeenAt(loc.bat, loc.batSeen, loc.lastSeen)
+    val batteryStale = batteryIsStale(batterySeen, now)
     val batteryText = if (bat != null && bat in 0..100) {
         stringResource(R.string.battery_pct, bat)
     } else {
         stringResource(R.string.home_dash)
+    }
+    val batteryAge = if (batterySeen > 0L) {
+        stringResource(R.string.battery_age, lastSeenPhrase(context, batterySeen, now))
+    } else {
+        null
     }
     val status = when {
         sharing && loc?.live == true -> stringResource(R.string.home_sharing_live)
@@ -183,7 +170,7 @@ fun HomeScreen(onTrack: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            update?.let { UpdateBanner(it, Modifier.appear(0)) }
+            offer?.let { UpdateBanner(it, Modifier.appear(0)) }
             MapPreview(
                 name = name,
                 status = status,
@@ -196,11 +183,16 @@ fun HomeScreen(onTrack: () -> Unit) {
                 onOpen = onTrack,
                 modifier = Modifier.appear(0),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.appear(1)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.appear(1).height(IntrinsicSize.Max),
+            ) {
                 MiniStat(
                     label = stringResource(R.string.stat_battery),
                     value = batteryText,
-                    modifier = Modifier.weight(1f),
+                    detail = batteryAge,
+                    valueColor = if (batteryStale) LdColors.onGlassMuted else LdColors.onGlass,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     leading = {
                         BatteryRing(
                             percent = if (batteryKnown) loc?.bat ?: -1 else -1,
@@ -219,12 +211,12 @@ fun HomeScreen(onTrack: () -> Unit) {
                 MiniStat(
                     label = stringResource(R.string.stat_seen),
                     value = seenValue,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 MiniStat(
                     label = stringResource(R.string.home_distance),
                     value = distanceText ?: stringResource(R.string.home_dash),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
             val ringing = ring is RingState.Ringing
@@ -234,7 +226,7 @@ fun HomeScreen(onTrack: () -> Unit) {
                 ActionTile(
                     label = stringResource(R.string.home_ping),
                     icon = if (pingOn) Lu.Check else Lu.Bell,
-                    tint = if (pingOn) LdColors.success else LdColors.colors.ink,
+                    tint = if (pingOn) LdColors.success else LdColors.onGlass,
                     onClick = {
                         if (!Store.isPaired(context)) return@ActionTile
                         RingController.sendPing(context)
@@ -317,7 +309,7 @@ private fun MapPreview(
                     Text(
                         name,
                         style = MaterialTheme.typography.titleMedium,
-                        color = LdColors.colors.ink,
+                        color = LdColors.onGlass,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -340,7 +332,7 @@ private fun MapPreview(
                 Text(
                     stringResource(R.string.home_status_line, status, seen),
                     style = MaterialTheme.typography.bodySmall,
-                    color = LdColors.colors.inkMuted,
+                    color = LdColors.onGlassMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -372,12 +364,12 @@ private fun MapPreview(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                LuIcon(Lu.MapPin, contentDescription = null, tint = LdColors.primary, size = 36.dp)
+                LuIcon(Lu.MapPin, contentDescription = null, tint = LdColors.onGlass, size = 36.dp)
                 Text(
                     stringResource(R.string.home_waiting, name),
                     modifier = Modifier.padding(top = 8.dp),
                     style = MaterialTheme.typography.titleMedium,
-                    color = LdColors.colors.ink,
+                    color = LdColors.onGlass,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -392,19 +384,23 @@ private fun MiniStat(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
+    detail: String? = null,
+    valueColor: Color = LdColors.onGlass,
     leading: @Composable () -> Unit = {},
 ) {
+    CompositionLocalProvider(LocalOnGlass provides true) {
     Column(
         modifier
-            .height(76.dp)
+            .fillMaxHeight()
+            .heightIn(min = 76.dp)
             .ldGlass(RoundedCornerShape(LdRadius.tile))
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = LdColors.colors.inkMuted,
+            color = LdColors.onGlassMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -416,12 +412,22 @@ private fun MiniStat(
             Text(
                 value,
                 style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
-                color = LdColors.colors.ink,
+                color = valueColor,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        if (detail != null) {
+            Text(
+                detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = LdColors.onGlassMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
     }
 }
 
@@ -431,7 +437,7 @@ private fun ActionTile(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    tint: Color = LdColors.colors.ink,
+    tint: Color = LdColors.onGlass,
     filled: Boolean = false,
     spinning: Boolean = false,
     glow: Boolean = false,

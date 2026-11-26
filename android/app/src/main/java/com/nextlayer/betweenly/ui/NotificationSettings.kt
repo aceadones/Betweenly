@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -126,7 +127,7 @@ fun NotificationSettings(snackbar: SnackbarHostState, modifier: Modifier = Modif
             stringResource(R.string.notif_mode_title),
             modifier = Modifier.padding(top = 6.dp),
             style = MaterialTheme.typography.bodyLarge,
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
         )
         ModePicker(mode) { next ->
             if (next != mode) Store.setNotifMode(context, next)
@@ -134,7 +135,7 @@ fun NotificationSettings(snackbar: SnackbarHostState, modifier: Modifier = Modif
         Text(
             help,
             style = MaterialTheme.typography.bodySmall,
-            color = LdColors.colors.inkMuted,
+            color = surfaceInk(muted = true),
         )
         NoticePreview(stringResource(R.string.notif_preview), messagePreview.title, messagePreview.text)
         AnimatedVisibility(
@@ -154,7 +155,7 @@ fun NotificationSettings(snackbar: SnackbarHostState, modifier: Modifier = Modif
                 Text(
                     stringResource(R.string.notif_custom_label),
                     style = MaterialTheme.typography.bodySmall,
-                    color = LdColors.colors.inkMuted,
+                    color = surfaceInk(muted = true),
                 )
                 DisguiseField(
                     value = customDraft,
@@ -177,12 +178,12 @@ fun NotificationSettings(snackbar: SnackbarHostState, modifier: Modifier = Modif
             stringResource(R.string.notif_alarm_label),
             modifier = Modifier.padding(top = 12.dp),
             style = MaterialTheme.typography.bodyLarge,
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
         )
         Text(
             stringResource(R.string.notif_alarm_help),
             style = MaterialTheme.typography.bodySmall,
-            color = LdColors.colors.inkMuted,
+            color = surfaceInk(muted = true),
         )
         DisguiseField(
             value = alarmDraft,
@@ -245,8 +246,8 @@ private fun ModePicker(mode: NotifMode, onSelect: (NotifMode) -> Unit) {
             .fillMaxWidth()
             .height(56.dp)
             .clip(track)
-            .background(LdColors.colors.ink.copy(alpha = 0.06f))
-            .border(1.dp, LdColors.colors.ink.copy(alpha = 0.12f), track)
+            .background(Color.White.copy(alpha = 0.14f))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), track)
             .padding(4.dp)
             .onSizeChanged { innerPx = it.width },
     ) {
@@ -279,7 +280,7 @@ private fun ModePicker(mode: NotifMode, onSelect: (NotifMode) -> Unit) {
                 ) {
                     Text(
                         label,
-                        color = if (index == current) LdColors.white else LdColors.colors.ink,
+                        color = if (index == current) LdColors.white else LdColors.onGlass,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -299,13 +300,13 @@ private fun DisguiseField(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(LdRadius.inner(LdRadius.card, 16.dp))
-    val style = MaterialTheme.typography.bodyLarge.copy(color = LdColors.colors.ink)
+    val style = MaterialTheme.typography.bodyLarge.copy(color = LdColors.onGlass)
     Box(
         modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clip(shape)
-            .background(LdColors.colors.ink.copy(alpha = 0.06f))
+            .background(Color.White.copy(alpha = 0.10f))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -313,7 +314,7 @@ private fun DisguiseField(
             Text(
                 placeholder,
                 style = MaterialTheme.typography.bodyLarge,
-                color = LdColors.colors.inkMuted,
+                color = surfaceInk(muted = true),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -326,7 +327,7 @@ private fun DisguiseField(
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onDone() }),
-            cursorBrush = SolidColor(LdColors.primary),
+            cursorBrush = SolidColor(LdColors.white),
         )
     }
 }
@@ -339,20 +340,20 @@ private fun NoticePreview(label: String, title: String, text: String) {
             .padding(top = 8.dp)
             .fillMaxWidth()
             .clip(shape)
-            .background(LdColors.colors.ink.copy(alpha = 0.06f))
+            .background(Color.White.copy(alpha = 0.10f))
             .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = LdColors.colors.inkMuted,
+            color = surfaceInk(muted = true),
             maxLines = 1,
         )
         Text(
             title,
             modifier = Modifier.padding(top = 2.dp),
             style = MaterialTheme.typography.titleSmall,
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -360,7 +361,7 @@ private fun NoticePreview(label: String, title: String, text: String) {
             Text(
                 text,
                 style = MaterialTheme.typography.bodySmall,
-                color = LdColors.colors.inkMuted,
+                color = surfaceInk(muted = true),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )

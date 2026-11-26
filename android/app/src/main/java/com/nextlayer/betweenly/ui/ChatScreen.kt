@@ -2,13 +2,22 @@
 
 package com.nextlayer.betweenly.ui
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.provider.OpenableColumns
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -19,6 +28,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.content.ReceiveContentListener
@@ -52,14 +63,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -97,9 +106,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,6 +121,9 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -125,6 +140,9 @@ import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.Store
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.ui.icons.LuIcon
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -136,18 +154,31 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 
 /**
- * The paired chat. [onOpenCamera] opens the in-app camera; its result comes
- * back through [ChatController.sendMedia].
+ * The paired chat. The list stays on the tab. Opening the thread hides the
+ * dock. [onOpenCamera] opens the in-app camera; the shot waits in
+ * [ChatController.stageCapture] until this screen shows the preview.
  */
 @Composable
-fun ChatScreen(onOpenCamera: () -> Unit) {
+fun ChatScreen(
+    opened: Boolean,
+    onOpen: () -> Unit,
+    onBack: () -> Unit,
+    onOpenCamera: () -> Unit,
+) {
     val context = LocalContext.current
     SideEffect { ChatController.install(context) }
+    if (!opened) {
+        ChatInbox(onOpen)
+        return
+    }
     DisposableEffect(Unit) {
         AppState.chatOpen = true
         ChatStore.markRead(context)
         ChatNotifications.cancel(context)
-        onDispose { AppState.chatOpen = false }
+        onDispose {
+            AppState.chatOpen = false
+            VoicePlay.stop()
+        }
     }
     var settings by rememberSaveable { mutableStateOf(false) }
     var background by rememberSaveable { mutableStateOf(false) }
@@ -156,9 +187,91 @@ fun ChatScreen(onOpenCamera: () -> Unit) {
             onOpenCamera = onOpenCamera,
             onOpenSettings = { settings = true },
             onOpenBackground = { background = true },
+            onBack = onBack,
         )
         if (background) ChatBackground(onBack = { background = false })
         if (settings) ChatSettings(onBack = { settings = false })
+    }
+}
+
+/** One row for the only conversation. The dock stays visible on this page. */
+@Composable
+private fun ChatInbox(onOpen: () -> Unit) {
+    val context = LocalContext.current
+    val storeRev by Store.changes.collectAsState()
+    val chatRev by ChatStore.changes.collectAsState()
+    val unread by ChatStore.unreadCount.collectAsState()
+    var latest by remember { mutableStateOf<ChatMessage?>(null) }
+    LaunchedEffect(chatRev) {
+        latest = withContext(Dispatchers.IO) { ChatStore.list(context).firstOrNull() }
+    }
+    val name = remember(storeRev) {
+        Store.partnerName(context).ifBlank { context.getString(R.string.partner_fallback) }
+    }
+    val openLabel = stringResource(R.string.chat_open_thread)
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            stringResource(R.string.tab_chat),
+            style = MaterialTheme.typography.headlineMedium,
+            color = LdColors.onGlass,
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 72.dp)
+                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
+                .clip(RoundedCornerShape(LdRadius.card))
+                .clickable(onClick = onOpen)
+                .semantics { contentDescription = openLabel }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 48.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    name,
+                    color = LdColors.onGlass,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val preview = latest
+                Text(
+                    if (preview == null) stringResource(R.string.chat_empty) else replySnippet(preview),
+                    color = LdColors.onGlassMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                val shown = latest
+                if (shown != null) {
+                    Text(
+                        chatTime(shown.ts),
+                        color = LdColors.onGlassMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (unread > 0) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        unread.coerceAtMost(99).toString(),
+                        color = LdColors.white,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier
+                            .background(LdColors.primary, CircleShape)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -167,6 +280,7 @@ private fun ChatBody(
     onOpenCamera: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenBackground: () -> Unit,
+    onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -179,12 +293,22 @@ private fun ChatBody(
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
     var ready by remember { mutableStateOf<Set<String>>(emptySet()) }
     var text by rememberSaveable { mutableStateOf("") }
-    var armed by remember { mutableStateOf("") }
-    val draft = rememberUpdatedState(text)
     var replyId by remember { mutableStateOf(ChatController.peekReply()) }
     var attachOpen by remember { mutableStateOf(false) }
+    var stickersOn by remember { mutableStateOf(false) }
+    var activitiesOn by remember { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
-    var confirmClear by remember { mutableStateOf(false) }
+    var drafts by remember { mutableStateOf<List<ChatDraft>>(emptyList()) }
+    var previewOn by remember { mutableStateOf(false) }
+    var caption by remember { mutableStateOf("") }
+    var draftIndex by remember { mutableIntStateOf(0) }
+    var recording by remember { mutableStateOf(false) }
+    var recordLocked by remember { mutableStateOf(false) }
+    var recordCancel by remember { mutableStateOf(false) }
+    var recordMs by remember { mutableIntStateOf(0) }
+    var levels by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var voiceDraft by remember { mutableStateOf<VoiceClip?>(null) }
+    val voice = remember { VoiceSession(context.applicationContext) }
     var menuId by remember { mutableStateOf<String?>(null) }
     var menuOn by remember { mutableStateOf(false) }
     var renderMenu by remember { mutableStateOf(false) }
@@ -193,7 +317,6 @@ private fun ChatBody(
     var pickerSlot by remember { mutableStateOf<Int?>(null) }
     var rowRect by remember { mutableStateOf(Rect.Zero) }
     var bubbleRect by remember { mutableStateOf(Rect.Zero) }
-    var rootAt by remember { mutableStateOf(Offset.Zero) }
     var viewingId by remember { mutableStateOf<String?>(null) }
     var viewingRect by remember { mutableStateOf<Rect?>(null) }
     var composerPx by remember { mutableIntStateOf(0) }
@@ -259,33 +382,212 @@ private fun ChatBody(
         }
     }
 
-    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val id = replyId
-            replyId = null
-            ChatController.sendPicked(context, uri, id)
-        }
+    fun appendDrafts(more: List<ChatDraft>) {
+        if (more.isEmpty()) return
+        val merged = (drafts + more).takeLast(10)
+        drafts = merged
+        draftIndex = merged.lastIndex
+        previewOn = true
+        attachOpen = false
+        stickersOn = false
+        activitiesOn = false
+    }
+
+    val gallery = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(10),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        appendDrafts(uris.map { uri -> draftFromUri(context, uri, fromCamera = false) })
     }
     val documents = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            val id = replyId
-            replyId = null
-            ChatController.sendDocument(context, uri, id)
+        if (uri == null) return@rememberLauncherForActivityResult
+        val mime = context.contentResolver.getType(uri).orEmpty()
+        appendDrafts(
+            listOf(
+                ChatDraft(
+                    key = System.nanoTime(),
+                    uri = uri,
+                    bytes = null,
+                    mime = mime.ifBlank { "application/octet-stream" },
+                    name = displayName(context, uri),
+                    video = false,
+                    asFile = true,
+                    fromCamera = false,
+                ),
+            ),
+        )
+    }
+    val micPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_mic_denied)) }
+            return@rememberLauncherForActivityResult
+        }
+        if (voice.start()) {
+            recording = true
+            recordLocked = true
+            recordCancel = false
+            recordMs = 0
+            levels = emptyList()
+            voiceDraft = null
+            stickersOn = false
+            attachOpen = false
+        } else {
+            scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_voice_failed)) }
         }
     }
 
-    fun sendDraft(fromKeyboard: Boolean = false) {
-        val current = if (fromKeyboard) text.trim() else text.trim().ifEmpty { armed.trim() }
-        if (current.isEmpty()) {
-            armed = ""
-            return
-        }
+    fun sendDraft() {
+        val current = text.trim()
+        if (current.isEmpty()) return
         val id = replyId
         val queued = ChatController.sendText(context, current, id)
         if (!queued) return
-        armed = ""
         text = ""
         replyId = null
+    }
+
+    fun openCamera() {
+        ChatController.holdPreview(drafts, caption, draftIndex)
+        attachOpen = false
+        stickersOn = false
+        onOpenCamera()
+    }
+
+    fun stageIncoming(uri: Uri, mime: String) {
+        scope.launch {
+            val read = withContext(Dispatchers.IO) {
+                ChatMedia.readNow(context, uri, ChatMedia.MAX_BYTES)
+            }
+            when (read) {
+                is ReadBytes.Ok -> {
+                    val image = mime.startsWith("image/") || mime.startsWith("video/") || mime.isBlank()
+                    appendDrafts(
+                        listOf(
+                            ChatDraft(
+                                key = System.nanoTime(),
+                                uri = null,
+                                bytes = read.data,
+                                mime = mime.ifBlank { "image/*" },
+                                name = if (image) "" else "file",
+                                video = mime.startsWith("video/"),
+                                asFile = !image,
+                                fromCamera = false,
+                            ),
+                        ),
+                    )
+                }
+                is ReadBytes.TooBig -> ChatController.note(R.string.chat_file_too_large)
+                is ReadBytes.Failed -> ChatController.note(R.string.chat_attach_failed)
+            }
+        }
+    }
+
+    fun startVoice() {
+        if (recording) return
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            micPerm.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        if (!voice.start()) {
+            scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_voice_failed)) }
+            return
+        }
+        recording = true
+        recordLocked = false
+        recordCancel = false
+        recordMs = 0
+        levels = emptyList()
+        voiceDraft = null
+        stickersOn = false
+        attachOpen = false
+        activitiesOn = false
+    }
+
+    fun finishVoice() {
+        val clip = voice.finish()
+        recording = false
+        recordLocked = false
+        recordCancel = false
+        levels = emptyList()
+        if (clip != null && clip.durationMs >= 400) voiceDraft = clip
+    }
+
+    fun cancelVoice() {
+        voice.cancel()
+        recording = false
+        recordLocked = false
+        recordCancel = false
+        levels = emptyList()
+    }
+
+    fun sendVoiceNote() {
+        val clip = voiceDraft ?: return
+        ChatController.sendVoice(context, clip.bytes, clip.durationMs, clip.wave, replyId)
+        voiceDraft = null
+        replyId = null
+    }
+
+    fun sendPreview() {
+        val items = drafts
+        if (items.isEmpty()) return
+        ChatController.sendDrafts(
+            context,
+            items.map { item ->
+                OutgoingDraft(item.uri, item.bytes, item.mime, item.name, item.video, item.asFile)
+            },
+            caption.trim(),
+            replyId,
+        )
+        drafts = emptyList()
+        caption = ""
+        previewOn = false
+        replyId = null
+        ChatController.holdPreview(emptyList(), "", 0)
+    }
+
+    LaunchedEffect(Unit) {
+        val (held, heldCaption, heldIndex) = ChatController.takePreview()
+        val staged = ChatController.consumeCaptures().map { cap ->
+            draftFromUri(context, cap.uri, fromCamera = true, video = cap.video)
+        }
+        val merged = (held + staged).takeLast(10)
+        if (merged.isNotEmpty()) {
+            drafts = merged
+            caption = heldCaption
+            draftIndex = heldIndex.coerceIn(0, merged.lastIndex)
+            previewOn = true
+        }
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                voice.cancel()
+                recording = false
+                recordLocked = false
+                recordCancel = false
+                VoicePlay.stop()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            voice.cancel()
+        }
+    }
+    LaunchedEffect(recording) {
+        if (!recording) return@LaunchedEffect
+        while (isActive && recording) {
+            levels = voice.sample()
+            recordMs = voice.elapsed()
+            if (recordMs >= 5 * 60 * 1000) {
+                val vibrator = context.getSystemService(Vibrator::class.java)
+                vibrator?.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE))
+                finishVoice()
+                break
+            }
+            delay(80)
+        }
     }
 
     fun closeMenu() {
@@ -303,6 +605,8 @@ private fun ChatBody(
         editing = false
         pickerSlot = null
         attachOpen = false
+        stickersOn = false
+        activitiesOn = false
         overflowOpen = false
         renderMenu = true
         menuOn = true
@@ -322,6 +626,34 @@ private fun ChatBody(
     val rows = remember(messages, today) { buildRows(messages) }
     val idKey = remember(messages) { messages.joinToString(separator = "\n") { it.id } }
     val selected = messages.firstOrNull { it.id == menuId }
+    LaunchedEffect(idKey) {
+        ChatController.syncDelivery(context, messages)
+    }
+    LaunchedEffect(listState, idKey) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }.collect { indices ->
+            val ids = ArrayList<String>()
+            for (index in indices) {
+                val row = rows.getOrNull(index) as? ChatRow.Msg ?: continue
+                val message = row.message
+                if (message.outgoing) continue
+                val type = message.json.optString("t")
+                if (type != "chat" && type != "att" && type != "link") continue
+                if (message.json.optInt("sv") == 1) continue
+                ids.add(message.id)
+            }
+            if (ids.isNotEmpty()) ChatController.noteSeen(context, ids)
+        }
+    }
+    val now = rememberNow()
+    val hideActivity = remember(storeRev) { Store.chatHideActivity(context) }
+    val heardAt = remember(chatRev) { ChatStore.partnerHeardAt }
+    val seenAt = maxOf(Store.partnerLoc(context)?.lastSeen ?: 0L, heardAt)
+    val presence = when {
+        hideActivity || seenAt <= 0L -> null
+        now - seenAt in 0..90_000L -> stringResource(R.string.chat_online)
+        else -> stringResource(R.string.last_seen, lastSeenPhrase(context, seenAt, now))
+    }
+    val view = LocalView.current
 
     SideEffect {
         if (!renderMenu) {
@@ -400,7 +732,20 @@ private fun ChatBody(
         label = "menuScrim",
     )
 
-    BackHandler(enabled = menuOn && pickerSlot == null, onBack = { closeMenu() })
+    BackHandler {
+        when {
+            renderMenu -> closeMenu()
+            previewOn -> {
+                previewOn = false
+                drafts = emptyList()
+                caption = ""
+            }
+            activitiesOn -> activitiesOn = false
+            stickersOn -> stickersOn = false
+            recording -> cancelVoice()
+            else -> onBack()
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -410,10 +755,16 @@ private fun ChatBody(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .onGloballyPositioned { rootAt = it.positionInRoot() },
+                .padding(padding),
         ) {
             ChatWallBackdrop(wall, Modifier.fillMaxSize())
+            val wallDim = wallScrim(
+                wall.kind,
+                if (wall.kind == "color") ChatTheme.wallpapers.getOrNull(wall.color) else null,
+            )
+            if (wallDim > 0f) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = wallDim)))
+            }
             Box(Modifier.fillMaxSize()) {
                 Row(
                     Modifier
@@ -432,22 +783,41 @@ private fun ChatBody(
                             .padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        MotionIconButton(
+                            onClick = onBack,
+                            icon = Lu.ArrowLeft,
+                            description = stringResource(R.string.back),
+                        )
                         RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 36.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            name,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = LdColors.colors.ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = LdColors.onGlass,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (presence != null) {
+                                Text(
+                                    presence,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = LdColors.onGlassMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
                     }
                     Spacer(Modifier.width(8.dp))
                     Box {
                         GlassIconButton(
                             onClick = {
                                 overflowOpen = !overflowOpen
-                                if (overflowOpen) attachOpen = false
+                                if (overflowOpen) {
+                                    attachOpen = false
+                                    stickersOn = false
+                                }
                             },
                             icon = Lu.EllipsisVertical,
                             description = stringResource(R.string.chat_menu),
@@ -472,10 +842,6 @@ private fun ChatBody(
                                 MenuLine(Lu.Settings, stringResource(R.string.chat_settings)) {
                                     overflowOpen = false
                                     onOpenSettings()
-                                }
-                                MenuLine(Lu.Trash2, stringResource(R.string.chat_clear)) {
-                                    overflowOpen = false
-                                    confirmClear = true
                                 }
                             }
                         }
@@ -573,85 +939,102 @@ private fun ChatBody(
                             }
                         },
                     )
-                    Composer(
-                        text = text,
-                        armed = armed,
-                        quoting = replyId?.let { id -> messages.firstOrNull { it.id == id } },
-                        turn = turn,
-                        attachOpen = attachOpen,
-                        onText = { incoming ->
-                            val next = incoming.take(10_000)
-                            val previous = text
-                            text = next
-                            if (next.isEmpty() && armed.trim() != previous.trim()) armed = ""
-                        },
-                        onArm = { armed = draft.value },
-                        onSend = { sendDraft() },
-                        onKeyboardSend = { sendDraft(fromKeyboard = true) },
-                        onToggleAttach = {
-                            attachOpen = !attachOpen
-                            if (attachOpen) overflowOpen = false
-                        },
-                        onDismissAttach = { attachOpen = false },
-                        onGallery = {
-                            attachOpen = false
-                            try {
-                                gallery.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
-                                )
-                            } catch (_: Exception) {
-                                scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
-                            }
-                        },
-                        onCamera = {
-                            attachOpen = false
-                            onOpenCamera()
-                        },
-                        onFile = {
-                            attachOpen = false
-                            try {
-                                documents.launch(arrayOf("*/*"))
-                            } catch (_: Exception) {
-                                scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
-                            }
-                        },
-                        onCancelReply = {
-                            replyId = null
-                            ChatController.armReply(null)
-                        },
-                        receiveImage = { content ->
-                            var consumed = false
-                            try {
-                                val clip = content.clipEntry.clipData
-                                for (i in 0 until clip.itemCount) {
-                                    val uri = clip.getItemAt(i).uri ?: continue
-                                    val mime = context.contentResolver.getType(uri)
-                                        ?: clip.description?.getMimeType(i)
-                                        ?: ""
-                                    if (mime.isNotEmpty() && !mime.startsWith("image/")) continue
-                                    when (val read = ChatMedia.readNow(context, uri, ChatMedia.MAX_BYTES)) {
-                                        is ReadBytes.Ok -> {
-                                            consumed = true
-                                            val id = replyId
-                                            replyId = null
-                                            ChatController.sendRich(context, read.data, mime, id)
-                                        }
-                                        is ReadBytes.TooBig -> {
-                                            consumed = true
-                                            ChatController.note(R.string.chat_file_too_large)
-                                        }
-                                        is ReadBytes.Failed -> Unit
-                                    }
-                                }
-                            } catch (_: Exception) {
-                                // The keyboard image could not be read. Typed text still works.
-                            }
-                            if (consumed) null else content
-                        },
-                        modifier = Modifier
+                    Column(
+                        Modifier
                             .align(Alignment.BottomCenter)
                             .onSizeChanged { composerPx = it.height },
-                    )
+                    ) {
+                        if (stickersOn && !recording && voiceDraft == null) {
+                            ChatStickerPanel(
+                                messages = messages,
+                                onGif = { bytes ->
+                                    ChatController.sendKind(context, bytes, "image/gif", "gif", "gif.gif", replyId)
+                                    replyId = null
+                                },
+                                onSticker = { bytes, mime ->
+                                    ChatController.sendKind(context, bytes, mime, "sticker", "sticker.png", replyId)
+                                    replyId = null
+                                },
+                                onClose = { stickersOn = false },
+                            )
+                        }
+                        Composer(
+                            text = text,
+                            quoting = replyId?.let { id -> messages.firstOrNull { it.id == id } },
+                            turn = turn,
+                            attachOpen = attachOpen,
+                            recording = recording,
+                            recordLocked = recordLocked,
+                            recordCancel = recordCancel,
+                            recordMs = recordMs,
+                            levels = levels,
+                            voiceDraft = voiceDraft,
+                            onText = { text = it.take(10_000) },
+                            onSend = { sendDraft() },
+                            onKeyboardSend = { sendDraft() },
+                            onToggleAttach = {
+                                attachOpen = !attachOpen
+                                if (attachOpen) {
+                                    overflowOpen = false
+                                    stickersOn = false
+                                }
+                            },
+                            onDismissAttach = { attachOpen = false },
+                            onGallery = {
+                                attachOpen = false
+                                try {
+                                    gallery.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                                    )
+                                } catch (_: Exception) {
+                                    scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
+                                }
+                            },
+                            onCamera = { openCamera() },
+                            onStickers = {
+                                val next = !stickersOn
+                                stickersOn = next
+                                if (next) {
+                                    attachOpen = false
+                                    overflowOpen = false
+                                    val imm = context.getSystemService(InputMethodManager::class.java)
+                                    imm?.hideSoftInputFromWindow(view.windowToken, 0)
+                                    view.clearFocus()
+                                }
+                            },
+                            onActivities = {
+                                attachOpen = false
+                                activitiesOn = true
+                            },
+                            onFile = {
+                                attachOpen = false
+                                try {
+                                    documents.launch(arrayOf("*/*"))
+                                } catch (_: Exception) {
+                                    scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
+                                }
+                            },
+                            onCancelReply = {
+                                replyId = null
+                                ChatController.armReply(null)
+                            },
+                            onImage = { uri, mime -> stageIncoming(uri, mime) },
+                            onMicDown = { startVoice() },
+                            onMicDrag = { recordCancel = it },
+                            onMicUp = { tap, cancelled ->
+                                if (recording) {
+                                    when {
+                                        cancelled -> cancelVoice()
+                                        recordLocked && tap -> finishVoice()
+                                        tap -> recordLocked = true
+                                        else -> finishVoice()
+                                    }
+                                }
+                            },
+                            onSendVoice = { sendVoiceNote() },
+                            onDeleteVoice = { voiceDraft = null },
+                        )
+                    }
                 }
             }
             if (renderMenu) {
@@ -667,7 +1050,17 @@ private fun ChatBody(
                     slots = slots,
                     rowRect = rowRect,
                     bubbleRect = bubbleRect,
-                    root = rootAt,
+                    pickerOpen = pickerSlot != null,
+                    recent = if (pickerSlot == null) emptyList() else ChatReactions.recent(context),
+                    onPickEmoji = { emoji ->
+                        val slot = pickerSlot ?: return@MessageMenu
+                        val next = slots.toMutableList()
+                        if (slot in next.indices) next[slot] = emoji
+                        slots = next
+                        ChatReactions.pushRecent(context, emoji)
+                        pickerSlot = null
+                    },
+                    onDismissPicker = { pickerSlot = null },
                     onDismiss = { closeMenu() },
                     onEdit = {
                         editing = true
@@ -730,56 +1123,77 @@ private fun ChatBody(
                     onPlay = { item -> openExternal(context, scope, snackbar, item) },
                 )
             }
-            EmojiPicker(
-                visible = pickerSlot != null,
-                recent = if (pickerSlot == null) emptyList() else ChatReactions.recent(context),
-                onPick = { emoji ->
-                    val slot = pickerSlot ?: return@EmojiPicker
-                    val next = slots.toMutableList()
-                    if (slot in next.indices) next[slot] = emoji
-                    slots = next
-                    ChatReactions.pushRecent(context, emoji)
-                    pickerSlot = null
-                },
-                onDismiss = { pickerSlot = null },
-            )
-        }
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            modifier = Modifier.ldPopupFrame(),
-            shape = MaterialTheme.shapes.extraLarge,
-            containerColor = LdColors.colors.menu,
-            tonalElevation = 0.dp,
-            titleContentColor = LdColors.colors.ink,
-            textContentColor = LdColors.colors.ink,
-            title = { Text(stringResource(R.string.chat_clear_title)) },
-            text = { Text(stringResource(R.string.chat_clear_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    scope.launch {
-                        val ok = withContext(Dispatchers.IO) {
-                            try {
-                                ChatStore.clearHistory(context)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (_: Exception) {
-                                false
+            if (activitiesOn) {
+                ChatActivitiesSheet(
+                    onPick = { file ->
+                        activitiesOn = false
+                        scope.launch {
+                            val bytes = withContext(Dispatchers.IO) {
+                                try {
+                                    file.readBytes()
+                                } catch (_: Exception) {
+                                    null
+                                }
+                            }
+                            if (bytes == null || bytes.isEmpty()) {
+                                snackbar.showSnackbar(context.getString(R.string.chat_attach_failed))
+                            } else {
+                                ChatController.sendLocalImage(context, bytes, "image/png", replyId)
+                                replyId = null
                             }
                         }
-                        if (!ok) snackbar.showSnackbar(context.getString(R.string.chat_clear_failed))
-                    }
-                }) { Text(stringResource(R.string.chat_clear_action)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClear = false }) {
-                    Text(stringResource(R.string.chat_close))
-                }
-            },
-        )
+                    },
+                    onClose = { activitiesOn = false },
+                )
+            }
+            if (previewOn && drafts.isNotEmpty()) {
+                val current = drafts.getOrNull(draftIndex)
+                ChatAttachPreview(
+                    items = drafts,
+                    selected = draftIndex.coerceIn(0, drafts.lastIndex),
+                    caption = caption,
+                    onCaption = { caption = it },
+                    onSelect = { draftIndex = it },
+                    onRemove = {
+                        val next = drafts.toMutableList()
+                        val index = draftIndex.coerceIn(0, next.lastIndex)
+                        if (index in next.indices) next.removeAt(index)
+                        drafts = next
+                        if (next.isEmpty()) {
+                            previewOn = false
+                            caption = ""
+                        } else {
+                            draftIndex = index.coerceAtMost(next.lastIndex)
+                        }
+                    },
+                    onAdd = {
+                        try {
+                            gallery.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                            )
+                        } catch (_: Exception) {
+                            scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
+                        }
+                    },
+                    onRetake = if (current?.fromCamera == true) {
+                        {
+                            val key = current.key
+                            drafts = drafts.filter { it.key != key }
+                            if (drafts.isEmpty()) previewOn = false
+                            openCamera()
+                        }
+                    } else {
+                        null
+                    },
+                    onSend = { sendPreview() },
+                    onClose = {
+                        previewOn = false
+                        drafts = emptyList()
+                        caption = ""
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -796,7 +1210,10 @@ private fun MessageMenu(
     slots: List<String>,
     rowRect: Rect,
     bubbleRect: Rect,
-    root: Offset,
+    pickerOpen: Boolean,
+    recent: List<String>,
+    onPickEmoji: (String) -> Unit,
+    onDismissPicker: () -> Unit,
     onDismiss: () -> Unit,
     onEdit: () -> Unit,
     onDone: () -> Unit,
@@ -807,13 +1224,38 @@ private fun MessageMenu(
     onDelete: () -> Unit,
     onUnsend: () -> Unit,
 ) {
+    Dialog(
+        onDismissRequest = { if (pickerOpen) onDismissPicker() else onDismiss() },
+        properties = DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+    val dialogView = LocalView.current
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    SideEffect {
+        (dialogView.parent as? DialogWindowProvider)?.window?.apply {
+            setDimAmount(0f)
+            setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+            )
+        }
+    }
+    val root = origin
     val type = message?.json?.optString("t").orEmpty()
     val gone = type == "gone"
     val canReply = message != null && !gone
     val canCopy = message?.let { copyable(it) } != null && !gone
     val canRetry = message != null && message.outgoing && message.status == ChatStore.FAILED && !gone
     val canUnsend = message != null && message.outgoing && !gone
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { origin = it.positionInWindow() },
+    ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -851,6 +1293,13 @@ private fun MessageMenu(
                 onUnsend = onUnsend,
             )
         }
+        EmojiPicker(
+            visible = pickerOpen,
+            recent = recent,
+            onPick = onPickEmoji,
+            onDismiss = onDismissPicker,
+        )
+    }
     }
 }
 
@@ -1058,12 +1507,12 @@ private fun JumpButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
-            LuIcon(Lu.ChevronDown, contentDescription = desc, size = 20.dp, tint = LdColors.colors.ink)
+            LuIcon(Lu.ChevronDown, contentDescription = desc, size = 20.dp, tint = LdColors.onGlass)
             if (count > 0) {
                 Spacer(Modifier.width(4.dp))
                 Text(
                     count.coerceAtMost(99).toString(),
-                    color = LdColors.colors.ink,
+                    color = LdColors.onGlass,
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -1074,139 +1523,169 @@ private fun JumpButton(
 @Composable
 private fun Composer(
     text: String,
-    armed: String,
     quoting: ChatMessage?,
     turn: Float,
     attachOpen: Boolean,
+    recording: Boolean,
+    recordLocked: Boolean,
+    recordCancel: Boolean,
+    recordMs: Int,
+    levels: List<Int>,
+    voiceDraft: VoiceClip?,
     onText: (String) -> Unit,
-    onArm: () -> Unit,
     onSend: () -> Unit,
     onKeyboardSend: () -> Unit,
     onToggleAttach: () -> Unit,
     onDismissAttach: () -> Unit,
     onGallery: () -> Unit,
     onCamera: () -> Unit,
+    onStickers: () -> Unit,
+    onActivities: () -> Unit,
     onFile: () -> Unit,
     onCancelReply: () -> Unit,
-        receiveImage: (TransferableContent) -> TransferableContent?,
-    modifier: Modifier = Modifier,
+    onImage: (Uri, String) -> Unit,
+    onMicDown: () -> Unit,
+    onMicDrag: (Boolean) -> Unit,
+    onMicUp: (Boolean, Boolean) -> Unit,
+    onSendVoice: () -> Unit,
+    onDeleteVoice: () -> Unit,
 ) {
-    val showSend = text.isNotBlank() || armed.isNotBlank()
-    val outer = ChatTheme.composerRadius
-    Column(
-        modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .fillMaxWidth()
-            .ldGlass(RoundedCornerShape(outer), solid = true)
-            .padding(4.dp),
-    ) {
-        if (quoting != null) {
-            Row(
+    val down = rememberUpdatedState(onMicDown)
+    val drag = rememberUpdatedState(onMicDrag)
+    val up = rememberUpdatedState(onMicUp)
+    val tools = !recording && voiceDraft == null
+    val showSend = text.isNotBlank() || voiceDraft != null
+    Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp).fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            if (tools) {
+                GlassIconButton(
+                    onClick = onCamera,
+                    icon = Lu.Camera,
+                    description = stringResource(R.string.chat_camera),
+                    solid = true,
+                )
+            }
+            Column(
                 Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, end = 4.dp, top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
+                    .ldGlass(RoundedCornerShape(ChatTheme.composerRadius), solid = true),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.chat_replying),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = LdColors.colors.inkMuted,
-                    )
-                    Text(
-                        replySnippet(quoting),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = LdColors.colors.ink,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                MotionIconButton(
-                    onClick = onCancelReply,
-                    icon = Lu.X,
-                    description = stringResource(R.string.chat_reply_cancel),
-                )
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Box {
-                MotionIconButton(
-                    onClick = onToggleAttach,
-                    icon = Lu.Plus,
-                    description = stringResource(R.string.chat_attach),
-                    modifier = Modifier.graphicsLayer { rotationZ = turn },
-                )
-                AnchoredPopup(
-                    visible = attachOpen,
-                    above = true,
-                    origin = TransformOrigin(0f, 1f),
-                    onDismiss = onDismissAttach,
-                ) {
-                    Column(
-                        Modifier
-                            .widthIn(min = 180.dp)
-                            .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                if (quoting != null && tools) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AttachTile(0, Lu.Image, stringResource(R.string.chat_gallery), onGallery)
-                        AttachTile(1, Lu.Camera, stringResource(R.string.chat_camera), onCamera)
-                        AttachTile(2, Lu.FileText, stringResource(R.string.chat_file), onFile)
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.chat_replying),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = LdColors.onGlassMuted,
+                            )
+                            Text(
+                                replySnippet(quoting),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = LdColors.onGlass,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        MotionIconButton(
+                            onClick = onCancelReply,
+                            icon = Lu.X,
+                            description = stringResource(R.string.chat_reply_cancel),
+                        )
                     }
                 }
+                when {
+                    recording -> VoiceRecordBar(recordMs, levels, recordCancel, recordLocked)
+                    voiceDraft != null -> VoiceDraftBar(voiceDraft)
+                    else -> ChatInputField(
+                        text = text,
+                        hint = stringResource(R.string.chat_hint),
+                        onText = onText,
+                        onKeyboardSend = onKeyboardSend,
+                        onImage = onImage,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    )
+                }
             }
-            TextField(
-                value = text,
-                onValueChange = onText,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { onKeyboardSend() }),
-                modifier = Modifier.weight(1f).contentReceiver(object : ReceiveContentListener {
-                    override fun onReceive(transferableContent: TransferableContent): TransferableContent? {
-                        return receiveImage(transferableContent)
-                    }
-                }),
-                placeholder = { Text(stringResource(R.string.chat_hint)) },
-                maxLines = 5,
-                shape = RoundedCornerShape(LdRadius.inner(outer, 4.dp)),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                ),
-            )
-            AnimatedVisibility(
-                visible = showSend,
-                enter = fadeIn(Motion.tween(160)) + scaleIn(
-                    animationSpec = Motion.tween(160),
-                    initialScale = 0.94f,
-                    transformOrigin = TransformOrigin(1f, 0.5f),
-                ),
-                exit = fadeOut(Motion.tween(110)) + scaleOut(
-                    animationSpec = Motion.tween(110),
-                    targetScale = 0.94f,
-                    transformOrigin = TransformOrigin(1f, 0.5f),
-                ),
-            ) {
+            if (tools) {
+                MotionIconButton(onGallery, Lu.Image, stringResource(R.string.chat_gallery))
+                MotionIconButton(onStickers, Lu.Smile, stringResource(R.string.chat_tab_stickers))
+            }
+            if (voiceDraft != null) {
+                MotionIconButton(onDeleteVoice, Lu.Trash2, stringResource(R.string.chat_voice_delete))
+            }
+            if (showSend) {
                 MotionIconButton(
-                    onClick = onSend,
+                    onClick = if (voiceDraft != null) onSendVoice else onSend,
                     icon = Lu.Send,
                     description = stringResource(R.string.chat_send),
-                    modifier = Modifier.pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                if (event.changes.any { it.changedToDown() }) onArm()
-                            }
-                        }
-                    },
                 )
+            } else {
+                val micLabel = stringResource(
+                    if (recordLocked) R.string.chat_voice_stop else R.string.chat_mic,
+                )
+                Box(
+                    Modifier
+                        .size(48.dp)
+                        .semantics { contentDescription = micLabel }
+                        .pointerInput(Unit) {
+                            val cancelPx = 72.dp.toPx()
+                            awaitEachGesture {
+                                val press = awaitFirstDown()
+                                val originX = press.position.x
+                                val started = System.currentTimeMillis()
+                                down.value()
+                                var cancelled = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == press.id } ?: break
+                                    if (!change.pressed) break
+                                    cancelled = change.position.x - originX < -cancelPx
+                                    drag.value(cancelled)
+                                    change.consume()
+                                }
+                                val tap = System.currentTimeMillis() - started < 280L
+                                up.value(tap, cancelled)
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    LuIcon(
+                        if (recordLocked) Lu.Pause else Lu.Mic,
+                        contentDescription = micLabel,
+                        tint = LdColors.onGlass,
+                    )
+                }
+            }
+            if (tools) {
+                Box {
+                    MotionIconButton(
+                        onClick = onToggleAttach,
+                        icon = Lu.Plus,
+                        description = stringResource(R.string.chat_attach),
+                        modifier = Modifier.graphicsLayer { rotationZ = turn },
+                    )
+                    AnchoredPopup(
+                        visible = attachOpen,
+                        above = true,
+                        origin = TransformOrigin(1f, 1f),
+                        onDismiss = onDismissAttach,
+                    ) {
+                        Column(
+                            Modifier
+                                .widthIn(min = 180.dp)
+                                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            AttachTile(0, Lu.Pencil, stringResource(R.string.chat_activities), onActivities)
+                            AttachTile(1, Lu.FileText, stringResource(R.string.chat_file), onFile)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1230,9 +1709,9 @@ private fun AttachTile(index: Int, icon: ImageVector, label: String, onClick: ()
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LuIcon(icon, contentDescription = null, tint = LdColors.colors.ink, size = 24.dp)
+            LuIcon(icon, contentDescription = null, tint = LdColors.onGlass, size = 24.dp)
             Spacer(Modifier.width(12.dp))
-            Text(label, color = LdColors.colors.ink, style = MaterialTheme.typography.bodyLarge)
+            Text(label, color = LdColors.onGlass, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -1253,9 +1732,9 @@ private fun MenuLine(icon: ImageVector, label: String, onClick: () -> Unit) {
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LuIcon(icon, contentDescription = null, tint = LdColors.colors.ink, size = 20.dp)
+        LuIcon(icon, contentDescription = null, tint = LdColors.onGlass, size = 20.dp)
         Spacer(Modifier.width(12.dp))
-        Text(label, color = LdColors.colors.ink, style = MaterialTheme.typography.bodyLarge)
+        Text(label, color = LdColors.onGlass, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
@@ -1349,7 +1828,7 @@ private fun MotionIconButton(
         interactionSource = press,
         modifier = modifier.pressScale(press),
     ) {
-        LuIcon(icon, contentDescription = description, tint = LdColors.colors.ink)
+        LuIcon(icon, contentDescription = description, tint = LdColors.onGlass)
     }
 }
 
@@ -1470,5 +1949,37 @@ private fun openExternal(
                 context.getString(if (saved) R.string.chat_saved else R.string.chat_open_failed),
             )
         }
+    }
+}
+
+private fun draftFromUri(
+    context: android.content.Context,
+    uri: Uri,
+    fromCamera: Boolean,
+    video: Boolean? = null,
+): ChatDraft {
+    val mime = context.contentResolver.getType(uri).orEmpty()
+    val isVideo = video ?: mime.startsWith("video/")
+    return ChatDraft(
+        key = System.nanoTime(),
+        uri = uri,
+        bytes = null,
+        mime = mime.ifBlank { if (isVideo) "video/mp4" else "image/jpeg" },
+        name = "",
+        video = isVideo,
+        asFile = false,
+        fromCamera = fromCamera,
+    )
+}
+
+private fun displayName(context: android.content.Context, uri: Uri): String {
+    return try {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index < 0) null else cursor.getString(index)
+        } ?: "file"
+    } catch (_: Exception) {
+        "file"
     }
 }

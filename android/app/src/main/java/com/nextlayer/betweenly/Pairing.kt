@@ -210,6 +210,7 @@ object Pairing {
                 AppScope.scope.launch { LocationSender.sendOnce(context) }
             }
         }
+        if (Store.isPaired(context)) BatteryUpdates.arm(context)
         return PairingResult.Success(safety)
     }
 

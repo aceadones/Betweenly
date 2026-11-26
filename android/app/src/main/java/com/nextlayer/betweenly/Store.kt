@@ -13,8 +13,8 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * [lat]/[lon]/[acc] are null when the partner has sent battery only (location
  * was off) so the previous point is kept. [ts] is their clock. [lastSeen] is
- * our clock at the moment we accepted the message. [live] is true while they
- * are in live sharing.
+ * our clock at the moment we accepted a location. [batSeen] is our clock when
+ * we accepted the battery value. [live] is true while they are in live sharing.
  */
 data class PartnerLoc(
     val lat: Double?,
@@ -25,6 +25,15 @@ data class PartnerLoc(
     val ts: Long,
     val live: Boolean,
     val lastSeen: Long,
+    val batSeen: Long = 0L,
+)
+
+/** This phone's last battery sample that was actually sent to the partner. */
+internal data class SelfBattery(
+    val level: Int,
+    val charging: Boolean,
+    val at: Long,
+    val known: Boolean,
 )
 
 /**
@@ -55,6 +64,7 @@ object Store {
     private const val HAS_STATUS = "partner_has_status"
     private const val BAT = "partner_bat"
     private const val CHG = "partner_chg"
+    private const val BAT_SEEN = "partner_bat_seen"
     private const val TS = "partner_ts"
     private const val LIVE = "partner_live"
     private const val SEEN = "partner_last_seen"
@@ -62,9 +72,18 @@ object Store {
     private const val SHARE = "share_on"
     private const val LIVE_ON = "live_on"
     private const val UPDATE = "last_update_check"
+    private const val UPDATE_OFFER = "update_offer"
+    private const val UPDATE_DISMISS = "update_dismiss_id"
+    private const val UPDATE_DISMISS_AT = "update_dismiss_at"
+    private const val SELF_BAT = "self_bat"
+    private const val SELF_CHG = "self_chg"
+    private const val SELF_BAT_AT = "self_bat_at"
+    private const val SELF_BAT_SET = "self_bat_set"
     private const val FCM = "fcm_token"
     private const val CHAT_WALLPAPER = "chat_wallpaper"
     private const val CHAT_AUTOSAVE = "chat_autosave"
+    private const val CHAT_RECEIPTS = "chat_read_receipts"
+    private const val CHAT_HIDE_ACTIVITY = "chat_hide_activity"
     private const val NOTIFY_MSG = "notify_msg"
     private const val NOTIFY_DRAW = "notify_draw"
     private const val NOTIF_MODE = "notif_mode"
@@ -200,6 +219,7 @@ object Store {
                 ts = p.getLong(TS, 0L),
                 live = p.getBoolean(LIVE, false),
                 lastSeen = p.getLong(SEEN, 0L),
+                batSeen = p.getLong(BAT_SEEN, 0L),
             )
         }
     }
@@ -215,6 +235,7 @@ object Store {
             putBoolean(HAS_STATUS, true)
             putInt(BAT, loc.bat)
             putBoolean(CHG, loc.chg)
+            putLong(BAT_SEEN, loc.batSeen)
             putLong(TS, loc.ts)
             putBoolean(LIVE, loc.live)
             putLong(SEEN, loc.lastSeen)
@@ -254,6 +275,53 @@ object Store {
         synchronized(lock) {
             prefs(context).edit().putLong(UPDATE, epochMillis).commit()
             bump()
+        }
+    }
+
+    /** Saved update offer from the last check that found a build. Not pair data. */
+    fun updateOffer(context: Context): String? = prefs(context).getString(UPDATE_OFFER, null)
+
+    fun setUpdateOffer(context: Context, raw: String?) {
+        synchronized(lock) {
+            val editor = prefs(context).edit()
+            if (raw.isNullOrEmpty()) editor.remove(UPDATE_OFFER) else editor.putString(UPDATE_OFFER, raw.take(8_000))
+            editor.commit()
+        }
+    }
+
+    fun updateDismissedId(context: Context): String = prefs(context).getString(UPDATE_DISMISS, "") ?: ""
+
+    fun updateDismissedAt(context: Context): Long = prefs(context).getLong(UPDATE_DISMISS_AT, 0L)
+
+    fun dismissUpdateDialog(context: Context, identity: String) {
+        synchronized(lock) {
+            prefs(context).edit()
+                .putString(UPDATE_DISMISS, identity.take(80))
+                .putLong(UPDATE_DISMISS_AT, System.currentTimeMillis())
+                .commit()
+        }
+    }
+
+    internal fun selfBattery(context: Context): SelfBattery {
+        val p = prefs(context)
+        val known = p.getBoolean(SELF_BAT_SET, false)
+        return SelfBattery(
+            level = p.getInt(SELF_BAT, -1),
+            charging = p.getBoolean(SELF_CHG, false),
+            at = p.getLong(SELF_BAT_AT, 0L),
+            known = known,
+        )
+    }
+
+    /** Does not refresh the UI. This is our own last send, not the partner's. */
+    fun setSelfBattery(context: Context, level: Int, charging: Boolean, at: Long) {
+        synchronized(lock) {
+            prefs(context).edit()
+                .putBoolean(SELF_BAT_SET, true)
+                .putInt(SELF_BAT, level)
+                .putBoolean(SELF_CHG, charging)
+                .putLong(SELF_BAT_AT, at)
+                .commit()
         }
     }
 
@@ -443,6 +511,32 @@ object Store {
         }
     }
 
+    /**
+     * When true, opening a message on screen tells the partner it was read.
+     * Default on. This phone only. DATA-FLOW: the preference never leaves the phone.
+     * The seen receipt itself is sent by the chat screen, and only while this is on.
+     */
+    fun chatReadReceipts(context: Context): Boolean = prefs(context).getBoolean(CHAT_RECEIPTS, true)
+
+    fun setChatReadReceipts(context: Context, on: Boolean) {
+        synchronized(lock) {
+            if (on == prefs(context).getBoolean(CHAT_RECEIPTS, true)) return
+            prefs(context).edit().putBoolean(CHAT_RECEIPTS, on).commit()
+            bump()
+        }
+    }
+
+    /** When true, the chat header hides online and last seen. This phone only. */
+    fun chatHideActivity(context: Context): Boolean = prefs(context).getBoolean(CHAT_HIDE_ACTIVITY, false)
+
+    fun setChatHideActivity(context: Context, on: Boolean) {
+        synchronized(lock) {
+            if (on == prefs(context).getBoolean(CHAT_HIDE_ACTIVITY, false)) return
+            prefs(context).edit().putBoolean(CHAT_HIDE_ACTIVITY, on).commit()
+            bump()
+        }
+    }
+
     private fun wallpaperOk(value: String): Boolean {
         if (value == "default" || value == "image") return true
         if (!value.startsWith("color:")) return false
@@ -453,11 +547,11 @@ object Store {
     /**
      * Ends the pair. Deletes the session, the chat history, attachment files,
      * and everything learned about the partner, stops sharing and ringing, and
-     * cancels the location alarm.
+     * cancels the location alarm and the battery alarm.
      *
      * Kept on purpose: this phone's own name, avatar, FCM token, the last
-     * update-check time, the notification wording, and the animations
-     * preference. Those are not the relationship. The FCM token is also still
+     * update-check time, the saved update offer, the notification wording, and
+     * the animations preference. Those are not the relationship. The FCM token is also still
      * registered with Google; wiping the local copy would not revoke it.
      */
     fun unpair(context: Context) {
@@ -465,10 +559,14 @@ object Store {
         synchronized(lock) {
             pairGeneration.incrementAndGet()
             SharingScheduler.cancel(app)
+            BatteryUpdates.cancel(app)
             val name = prefs(app).getString(MY_NAME, "") ?: ""
             val avatar = readAvatarLocked(prefs(app), MY_AVATAR)
             val token = prefs(app).getString(FCM, "") ?: ""
             val checked = prefs(app).getLong(UPDATE, 0L)
+            val offer = prefs(app).getString(UPDATE_OFFER, null)
+            val dismissId = prefs(app).getString(UPDATE_DISMISS, "") ?: ""
+            val dismissAt = prefs(app).getLong(UPDATE_DISMISS_AT, 0L)
             val notifyMsg = prefs(app).getBoolean(NOTIFY_MSG, true)
             val notifyDraw = prefs(app).getBoolean(NOTIFY_DRAW, true)
             val notifMode = prefs(app).getString(NOTIF_MODE, "off") ?: "off"
@@ -481,6 +579,9 @@ object Store {
             editor.putString(MY_NAME, name)
             editor.putString(FCM, token)
             editor.putLong(UPDATE, checked)
+            if (!offer.isNullOrEmpty()) editor.putString(UPDATE_OFFER, offer)
+            editor.putString(UPDATE_DISMISS, dismissId)
+            editor.putLong(UPDATE_DISMISS_AT, dismissAt)
             editor.putBoolean(NOTIFY_MSG, notifyMsg)
             editor.putBoolean(NOTIFY_DRAW, notifyDraw)
             editor.putString(NOTIF_MODE, notifMode)

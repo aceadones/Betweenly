@@ -11,8 +11,8 @@ object AppState {
     var foreground: Boolean = false
 
     /**
-     * True while the Chat tab is on screen. Incoming chat does not add to the
-     * unread count in that case. The camera page is not the Chat tab.
+     * True while the conversation thread is on screen. The chat list and the
+     * camera page leave this false, so a new message can still count as unread.
      */
     @Volatile
     var chatOpen: Boolean = false

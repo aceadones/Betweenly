@@ -33,6 +33,7 @@ class App : Application() {
                 SharingScheduler.schedule(this)
             }
         }
+        BatteryUpdates.start(this)
         if (Store.isPaired(this)) {
             AppScope.scope.launch { Inbox.process(this@App) }
         }

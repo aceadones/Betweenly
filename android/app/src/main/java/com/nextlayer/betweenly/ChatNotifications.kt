@@ -184,7 +184,8 @@ object ChatNotifications {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             val builder = NotificationCompat.Builder(app, channelId)
-                .setSmallIcon(R.drawable.ic_stat_heart)
+                .setSmallIcon(R.drawable.ic_stat_logo)
+                .setColor(ContextCompat.getColor(app, R.color.notif_accent))
                 .setContentTitle(copy.title.ifBlank { app.getString(R.string.app_name) })
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
@@ -199,7 +200,7 @@ object ChatNotifications {
                 builder.setStyle(NotificationCompat.BigTextStyle().bigText(copy.text))
             }
             if (!actionLabel.isNullOrBlank()) {
-                builder.addAction(R.drawable.ic_stat_heart, actionLabel, pending)
+                builder.addAction(R.drawable.ic_stat_logo, actionLabel, pending)
             }
             manager.notify(notificationId, builder.build())
         } catch (_: Exception) {
@@ -248,6 +249,7 @@ object ChatNotifications {
                 "video" -> NotifEvent.Video
                 "sticker" -> NotifEvent.Sticker
                 "gif" -> NotifEvent.Gif
+                "voice" -> NotifEvent.Voice
                 else -> NotifEvent.File
             }
             "link" -> NotifEvent.Link

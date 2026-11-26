@@ -1,6 +1,7 @@
 package com.nextlayer.betweenly
 
 import android.content.Context
+import com.nextlayer.betweenly.ui.ChatController
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import kotlin.coroutines.cancellation.CancellationException
@@ -22,10 +23,14 @@ object ChatInbound {
                     val emoji = json.optString("emoji")
                     if (emoji.isNotEmpty()) ChatStore.setReaction(context, json.optString("id"), emoji)
                 }
+                "dlv" -> ChatStore.applyReceipt(context, json, read = false)
+                "seen" -> ChatStore.applyReceipt(context, json, read = true)
                 "unsend" -> ChatStore.tombstone(context, json.optString("id"), onlyIncoming = true)
                 "wall" -> ChatWallpaperSync.onIncoming(context, json)
                 "chat", "att", "link" -> {
                     if (!ChatStore.insertIncoming(context, json)) return
+                    val stored = ChatStore.normalizeId(json.optString("id"))
+                    if (stored != null) ChatController.noteDelivered(context, stored)
                     if (json.optString("t") == "att") {
                         val id = ChatStore.normalizeId(json.optString("id"))
                         if (id != null) {

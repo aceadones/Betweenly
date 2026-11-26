@@ -506,10 +506,10 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
             onDismissRequest = { askAudio = false },
             modifier = Modifier.ldPopupFrame(),
             shape = MaterialTheme.shapes.extraLarge,
-            containerColor = LdColors.colors.menu,
+            containerColor = LdColors.glassFill,
             tonalElevation = 0.dp,
-            titleContentColor = LdColors.colors.ink,
-            textContentColor = LdColors.colors.ink,
+            titleContentColor = LdColors.onGlass,
+            textContentColor = LdColors.onGlassMuted,
             title = { Text(stringResource(R.string.camera_audio_title)) },
             text = { Text(stringResource(R.string.camera_audio_body)) },
             confirmButton = {
@@ -525,7 +525,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                             session.startVideo(rotationOf(), withAudio = false)
                         }
                     },
-                ) { Text(stringResource(R.string.camera_audio_allow)) }
+                ) { Text(stringResource(R.string.camera_audio_allow), color = LdColors.onGlass) }
             },
             dismissButton = {
                 TextButton(
@@ -534,7 +534,7 @@ private fun CapturePane(vm: CameraViewModel, onClose: () -> Unit) {
                         skipAudio = true
                         session.startVideo(rotationOf(), withAudio = false)
                     },
-                ) { Text(stringResource(R.string.camera_audio_skip)) }
+                ) { Text(stringResource(R.string.camera_audio_skip), color = LdColors.onGlass) }
             },
         )
     }

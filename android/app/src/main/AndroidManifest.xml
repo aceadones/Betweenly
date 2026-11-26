@@ -24,7 +24,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- In-app camera. Optional: the rest of the app still runs if this is denied or missing. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Sound on a video. If this is denied, the video is recorded without audio. -->
+    <!-- Voice messages, and sound on a video. Asked the first time a recording starts. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- These permissions would otherwise mark the hardware as required. -->
@@ -105,6 +105,11 @@
 
         <receiver
             android:name=".LocationAlarmReceiver"
+            android:exported="false" />
+
+        <!-- 30-minute battery fallback. ACTION_BATTERY_CHANGED cannot be declared here. -->
+        <receiver
+            android:name=".BatteryAlarmReceiver"
             android:exported="false" />
 
         <!-- BOOT_COMPLETED is a protected system broadcast. -->

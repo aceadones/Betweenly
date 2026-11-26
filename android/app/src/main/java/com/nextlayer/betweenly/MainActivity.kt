@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -37,6 +38,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
+import com.nextlayer.betweenly.ui.UpdateAvailableDialog
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.nextlayer.betweenly.ui.ActivityScreen
@@ -152,6 +155,7 @@ private fun Root(startOpen: String?) {
     val initial = remember { startRoute(context, startOpen) }
     var screenName by rememberSaveable { mutableStateOf(initial.screen.name) }
     var tabName by rememberSaveable { mutableStateOf(initial.tab.name) }
+    var threadOpen by rememberSaveable { mutableStateOf(startOpen == "chat") }
     var privacyFrom by rememberSaveable { mutableStateOf(Screen.Onboarding.name) }
     val screen = screenName.toScreen()
     val tab = tabName.toTab()
@@ -167,15 +171,18 @@ private fun Root(startOpen: String?) {
             "chat" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Chat.name
+                threadOpen = true
             }
             "activity" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Activity.name
+                threadOpen = false
             }
             // V1 widget. Profile replaced the settings screen.
             "settings" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Profile.name
+                threadOpen = false
             }
         }
     }
@@ -198,7 +205,31 @@ private fun Root(startOpen: String?) {
         screenName = if (screen == Screen.Privacy) privacyFrom else Screen.Main.name
     }
 
+    val offer by UpdatePrompt.info.collectAsState()
+    val showUpdate by UpdatePrompt.dialog.collectAsState()
+    LaunchedEffect(Unit) {
+        val result = try {
+            // DATA-FLOW: update metadata from the relay, and from GitHub only when that repo is public. Not encrypted. No pair data.
+            Updater.check(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            UpdateCheck.Error
+        }
+        when (result) {
+            is UpdateCheck.Available -> {
+                val id = result.info.identity()
+                val show = Store.updateDismissedId(context) != id ||
+                    Store.updateDismissedAt(context) < Store.lastUpdateCheck(context)
+                UpdatePrompt.publish(result.info, dialog = show)
+            }
+            UpdateCheck.UpToDate -> UpdatePrompt.clear()
+            UpdateCheck.Error -> Unit
+        }
+    }
+
     val slidePx = with(LocalDensity.current) { 24.dp.roundToPx() }
+    Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = screen,
         modifier = Modifier.fillMaxSize(),
@@ -223,7 +254,9 @@ private fun Root(startOpen: String?) {
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
             Screen.Main -> MainShell(
                 tab = tab,
+                threadOpen = threadOpen,
                 onTab = { tabName = it.name },
+                onThread = { threadOpen = it },
                 onTrack = { screenName = Screen.Track.name },
                 onCamera = { screenName = Screen.Camera.name },
                 onOpenDrawing = { screenName = Screen.Drawing.name },
@@ -235,12 +268,25 @@ private fun Root(startOpen: String?) {
             )
         }
     }
+    val pending = offer
+    if (showUpdate && pending != null) {
+        UpdateAvailableDialog(
+            info = pending,
+            onLater = {
+                Store.dismissUpdateDialog(context, pending.identity())
+                UpdatePrompt.hideDialog()
+            },
+        )
+    }
+    }
 }
 
 @Composable
 private fun MainShell(
     tab: Tab,
+    threadOpen: Boolean,
     onTab: (Tab) -> Unit,
+    onThread: (Boolean) -> Unit,
     onTrack: () -> Unit,
     onCamera: () -> Unit,
     onOpenDrawing: () -> Unit,
@@ -250,14 +296,20 @@ private fun MainShell(
     val context = androidx.compose.ui.platform.LocalContext.current
     val unread by ChatStore.unreadCount.collectAsState()
     LaunchedEffect(Unit) { ChatStore.loadUnread(context) }
+    val fullChat = tab == Tab.Chat && threadOpen
+    if (tab != Tab.Chat && threadOpen) {
+        SideEffect { onThread(false) }
+    }
     val tabSlide = with(LocalDensity.current) { 24.dp.roundToPx() }
     Scaffold(
         containerColor = Color.Transparent,
-        contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
+        contentWindowInsets = if (fullChat) {
+            WindowInsets.safeDrawing
+        } else {
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+        },
         bottomBar = {
-            LdBottomBar(
+            if (!fullChat) LdBottomBar(
                 tabs = listOf(
                     LdTab(
                         stringResource(R.string.tab_activity),
@@ -301,7 +353,12 @@ private fun MainShell(
                     Tab.Activity -> ActivityScreen(
                         onOpenDrawing = onOpenDrawing,
                     )
-                    Tab.Chat -> ChatScreen(onOpenCamera = onCamera)
+                    Tab.Chat -> ChatScreen(
+                        opened = threadOpen,
+                        onOpen = { onThread(true) },
+                        onBack = { onThread(false) },
+                        onOpenCamera = onCamera,
+                    )
                     Tab.Location -> HomeScreen(onTrack = onTrack)
                     Tab.Profile -> ProfileScreen(onPrivacy = onPrivacy, onUnpaired = onUnpaired)
                 }
@@ -311,24 +368,14 @@ private fun MainShell(
 }
 
 /**
- * Camera sits above the dock. A finished photo or video is handed to the
- * chat task. [ChatController.sendMedia] lives in that task's file.
+ * Camera sits above the dock. Confirming a shot stages it for the chat
+ * preview. The chat screen sends it after a caption, if the person still wants to.
  */
 @Composable
 private fun CameraRoute(onClose: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
     CameraScreen(
         onResult = { uri: Uri, isVideo: Boolean ->
-            val app = context.applicationContext
-            AppScope.scope.launch {
-                try {
-                    ChatController.sendMedia(app, uri, isVideo)
-                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
-                    throw e
-                } catch (_: Exception) {
-                    // The picture stays where the camera put it. Chat reports its own failure.
-                }
-            }
+            ChatController.stageCapture(uri, isVideo)
             onClose()
         },
         onClose = onClose,

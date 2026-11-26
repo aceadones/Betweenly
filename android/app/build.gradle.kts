@@ -29,6 +29,8 @@ android {
         buildConfigField("String", "FCM_APP_ID", "\"${prop("fcm.appId")}\"")
         buildConfigField("String", "FCM_API_KEY", "\"${prop("fcm.apiKey")}\"")
         buildConfigField("String", "FCM_SENDER_ID", "\"${prop("fcm.senderId")}\"")
+        // GIF search. Empty until tenor.apiKey is set in local.properties.
+        buildConfigField("String", "TENOR_API_KEY", "\"${prop("tenor.apiKey")}\"")
     }
     signingConfigs {
         create("release") {

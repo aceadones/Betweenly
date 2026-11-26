@@ -3,7 +3,6 @@ package com.nextlayer.betweenly.ui
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -98,7 +97,7 @@ private fun TileRow(chars: String, start: Int) {
                         rotationY = facing
                         cameraDistance = 12f * density
                     }
-                    .background(LdColors.colors.glassStrong, RoundedCornerShape(LdRadius.tile))
+                    .darkGlass(RoundedCornerShape(LdRadius.tile))
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -108,7 +107,7 @@ private fun TileRow(chars: String, start: Int) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 26.sp,
                     ),
-                    color = LdColors.colors.ink,
+                    color = LdColors.onGlass,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -191,10 +190,10 @@ private fun EntryRow(chars: String, start: Int) {
                 Modifier
                     .weight(1f)
                     .heightIn(min = 56.dp)
-                    .background(if (on) LdColors.colors.glassStrong else LdColors.colors.glass, shape)
+                    .darkGlass(shape)
                     .border(
                         width = if (on) 1.5.dp else 0.dp,
-                        color = if (on) LdColors.primary else LdColors.clear,
+                        color = if (on) LdColors.white.copy(alpha = 0.70f) else LdColors.clear,
                         shape = shape,
                     )
                     .padding(vertical = 8.dp),
@@ -206,7 +205,7 @@ private fun EntryRow(chars: String, start: Int) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 24.sp,
                     ),
-                    color = LdColors.colors.ink,
+                    color = LdColors.onGlass,
                 )
             }
         }
@@ -236,8 +235,8 @@ fun IconTextButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        LuIcon(icon, contentDescription = null, tint = LdColors.colors.ink, size = 20.dp)
+        LuIcon(icon, contentDescription = null, tint = LdColors.onGlass, size = 20.dp)
         Spacer(Modifier.width(8.dp))
-        Text(label, style = MaterialTheme.typography.titleSmall, color = LdColors.colors.ink)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = LdColors.onGlass)
     }
 }

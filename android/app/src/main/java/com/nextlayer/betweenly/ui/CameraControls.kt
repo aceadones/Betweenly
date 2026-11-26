@@ -30,6 +30,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -417,10 +418,10 @@ internal fun QualityDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.ldPopupFrame(),
         shape = MaterialTheme.shapes.extraLarge,
-        containerColor = LdColors.colors.menu,
+        containerColor = LdColors.glassFill,
         tonalElevation = 0.dp,
-        titleContentColor = LdColors.colors.ink,
-        textContentColor = LdColors.colors.ink,
+        titleContentColor = LdColors.onGlass,
+        textContentColor = LdColors.onGlass,
         title = { Text(stringResource(R.string.camera_quality)) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
@@ -428,7 +429,7 @@ internal fun QualityDialog(
                     Text(
                         stringResource(R.string.camera_video_hint),
                         style = MaterialTheme.typography.bodySmall,
-                        color = LdColors.colors.inkMuted,
+                        color = LdColors.onGlassMuted,
                     )
                     videos.forEach { choice ->
                         QualityRow(choice.label, selected = video != null && video.quality == choice.quality && video.fps == choice.fps) {
@@ -446,7 +447,9 @@ internal fun QualityDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.camera_done)) }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.camera_done), color = LdColors.onGlass)
+            }
         },
     )
 }
@@ -460,8 +463,15 @@ private fun QualityRow(label: String, selected: Boolean, onClick: () -> Unit) {
             .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(label, style = MaterialTheme.typography.bodyLarge)
+        RadioButton(
+            selected = selected,
+            onClick = onClick,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = LdColors.onGlass,
+                unselectedColor = LdColors.onGlassMuted,
+            ),
+        )
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = LdColors.onGlass)
     }
 }
 

@@ -32,17 +32,17 @@ object ChatTheme {
     fun onMine(): Color = LdColors.white
 
     @Composable
-    fun theirs(): Color = LdColors.colors.bubbleTheirs
+    fun theirs(): Color = LdColors.glassFill
 
-    /** Dark text. Theirs stays a light glass in both themes so this stays readable. */
+    /** Light text. Their bubble is dark glass in both themes. */
     @Composable
-    fun onTheirs(): Color = LdColors.navy
+    fun onTheirs(): Color = LdColors.onGlass
 
     @Composable
     fun ink(outgoing: Boolean): Color = if (outgoing) onMine() else onTheirs()
 
     @Composable
-    fun meta(outgoing: Boolean): Color = if (outgoing) LdColors.onMineMuted else LdColors.metaTheirs
+    fun meta(outgoing: Boolean): Color = if (outgoing) LdColors.onMineMuted else LdColors.onGlassMuted
 
     @Composable
     fun timestamp(): Color = meta(outgoing = false)

@@ -26,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,14 +57,16 @@ fun GlassGroup(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .ldGlass(RoundedCornerShape(LdRadius.card))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        content = content,
-    )
+    CompositionLocalProvider(LocalOnGlass provides true) {
+        Column(
+            modifier
+                .fillMaxWidth()
+                .ldGlass(RoundedCornerShape(LdRadius.card))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -72,12 +75,12 @@ fun SectionLabel(icon: ImageVector, text: String, modifier: Modifier = Modifier)
         modifier.heightIn(min = 40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LuIcon(icon, contentDescription = null, tint = LdColors.colors.textPrimary, size = 20.dp)
+        LuIcon(icon, contentDescription = null, tint = surfaceInk(), size = 20.dp)
         Spacer(Modifier.width(10.dp))
         Text(
             text,
             style = MaterialTheme.typography.titleMedium,
-            color = LdColors.colors.ink,
+            color = surfaceInk(),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -92,6 +95,7 @@ fun BentoStat(
     visual: @Composable (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(LdRadius.card)
+    CompositionLocalProvider(LocalOnGlass provides true) {
     Column(
         modifier
             .heightIn(min = 112.dp)
@@ -102,7 +106,7 @@ fun BentoStat(
         Text(
             label,
             style = MaterialTheme.typography.labelLarge,
-            color = LdColors.colors.inkMuted,
+            color = LdColors.onGlassMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -112,10 +116,11 @@ fun BentoStat(
         Text(
             value,
             style = MaterialTheme.typography.titleMedium,
-            color = LdColors.colors.ink,
+            color = LdColors.onGlass,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+    }
     }
 }
 
@@ -149,15 +154,15 @@ fun BentoAction(
         Box(
             Modifier
                 .size(44.dp)
-                .background(LdColors.primary.copy(alpha = if (isSystemInDarkTheme()) 0.28f else 0.14f), well),
+                .background(Color.White.copy(alpha = 0.16f), well),
             contentAlignment = Alignment.Center,
         ) {
-            LuIcon(icon, contentDescription = null, tint = LdColors.colors.textPrimary, size = 22.dp)
+            LuIcon(icon, contentDescription = null, tint = LdColors.onGlass, size = 22.dp)
         }
         Text(
             title,
             style = MaterialTheme.typography.titleMedium,
-            color = LdColors.colors.ink,
+            color = LdColors.onGlass,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -169,12 +174,12 @@ fun BatteryRing(percent: Int, modifier: Modifier = Modifier, diameter: Dp = 52.d
     val known = percent in 0..100
     val sweep = if (known) percent / 100f else 0f
     val color = when {
-        !known -> LdColors.colors.inkMuted
+        !known -> if (LocalOnGlass.current) LdColors.onGlassMuted else LdColors.colors.inkMuted
         percent <= 15 -> LdColors.heart
         else -> LdColors.success
     }
     // LdColors.colors is composable; read it before the draw scope.
-    val track = LdColors.colors.ink.copy(alpha = 0.16f)
+    val track = surfaceInk().copy(alpha = 0.22f)
     val strokeWidth = if (diameter < 32.dp) 2.5.dp else 5.dp
     Canvas(modifier.size(diameter)) {
         val stroke = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
@@ -213,6 +218,7 @@ fun UnderlineNameField(
     label: String,
     modifier: Modifier = Modifier,
     onDone: () -> Unit = {},
+    onFocus: (Boolean) -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
     val lifted by animateFloatAsState(
@@ -235,7 +241,10 @@ fun UnderlineNameField(
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .heightIn(min = 48.dp)
-                    .onFocusChanged { focused = it.isFocused },
+                    .onFocusChanged {
+                        focused = it.isFocused
+                        onFocus(it.isFocused)
+                    },
                 textStyle = LdType.PageTitle.copy(color = ink),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
@@ -286,7 +295,7 @@ fun DestructiveBlock(
     modifier: Modifier = Modifier,
 ) {
     val dark = isSystemInDarkTheme()
-    val bg = if (dark) Color(0xFF3A1824) else Color(0xFFFFE8E6)
+    val bg = if (dark) Color(0xFF3A1821) else Color(0xFFFFE8E6)
     val fg = if (dark) Color(0xFFFFB4AB) else Color(0xFF9F1C1C)
     val interaction = remember { MutableInteractionSource() }
     val shape = RoundedCornerShape(LdRadius.card)

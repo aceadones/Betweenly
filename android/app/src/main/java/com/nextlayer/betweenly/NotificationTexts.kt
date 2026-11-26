@@ -3,6 +3,7 @@ package com.nextlayer.betweenly
 import android.app.Notification
 import android.content.Context
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 /** How a message-like notice is worded. Stored on this phone only. */
 enum class NotifMode {
@@ -23,6 +24,7 @@ enum class NotifEvent {
     Video,
     Sticker,
     Gif,
+    Voice,
     File,
     Link,
     Drawing,
@@ -88,6 +90,7 @@ fun notificationText(
         NotifEvent.Video -> context.getString(R.string.chat_reply_video)
         NotifEvent.Sticker -> context.getString(R.string.chat_reply_sticker)
         NotifEvent.Gif -> context.getString(R.string.chat_reply_gif)
+        NotifEvent.Voice -> context.getString(R.string.chat_reply_voice)
         NotifEvent.File -> context.getString(R.string.chat_reply_file)
         NotifEvent.Drawing -> context.getString(R.string.notif_new_drawing)
         NotifEvent.Ping -> generic
@@ -104,7 +107,8 @@ fun notificationText(
  */
 internal fun discreetPublicNotification(context: Context, channelId: String): Notification {
     return NotificationCompat.Builder(context, channelId)
-        .setSmallIcon(R.drawable.ic_stat_heart)
+        .setSmallIcon(R.drawable.ic_stat_logo)
+        .setColor(ContextCompat.getColor(context, R.color.notif_accent))
         .setContentTitle(context.getString(R.string.app_name))
         .setContentText(context.getString(R.string.notif_lock_generic))
         .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

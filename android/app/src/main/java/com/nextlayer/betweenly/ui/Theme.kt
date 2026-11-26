@@ -30,12 +30,11 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -61,17 +60,23 @@ import java.time.ZoneId
 
 /**
  * Glass surfaces on a warm rose ground. Screens read [LdColors] or [MaterialTheme].
- * Accent is crimson-rose #D6245A. White on that fill is about 4.9:1.
- * [deep] (#A3123E) is the pressed end of the button and clears 7:1 with white.
- * [navy] is the wine ink callers already use for text. It is not blue.
+ * Accent is crimson #D62448 (hue shifted +6° from #D6245A). White on that fill stays above 4.5:1.
+ * [deep] (#A31230) is the pressed end of the button and clears 7:1 with white.
+ * [navy] is the wine ink callers already use for text on the page. It is not blue.
+ * Text that sits on [darkGlass] uses [onGlass] / [onGlassMuted], not [LdPalette.ink].
  */
 object LdColors {
-    val primary = Color(0xFFD6245A)
-    val deep = Color(0xFFA3123E)
-    val glow = Color(0xFFFF5C86)
-    val tint = Color(0xFFFFE3EA)
+    val primary = Color(0xFFD62448)
+    val deep = Color(0xFFA31230)
+    val glow = Color(0xFFFF5C76)
+    val tint = Color(0xFFFFE3E7)
     val navy = Color(0xFF1A0A12)
-    val heart = Color(0xFFFF4D5E)
+    val heart = Color(0xFFFF4E4D)
+    /** White at 92% and 70%. Both clear 4.5:1 on [glassFill] over the lightest blush. */
+    val onGlass = Color.White.copy(alpha = 0.92f)
+    val onGlassMuted = Color.White.copy(alpha = 0.70f)
+    /** Near-black wine at 78%. Dialogs use this; cards use [darkGlass]. */
+    val glassFill = Color(0xC70C060A)
     val success = Color(0xFF34C759)
     val white = Color(0xFFFFFFFF)
     val black = Color(0xFF111318)
@@ -83,16 +88,16 @@ object LdColors {
     /** Warm plate under a brush sample. */
     val previewPlate = Color(0xFFF7F4EF)
     /** Rose wash. The Duet card paints with [navy] and [primary]. */
-    val musicDeep = Color(0xFFA3123E)
-    val musicWashTop = Color(0xFFFFE3EA)
-    val musicWashBottom = Color(0xFFFF8AA6)
+    val musicDeep = Color(0xFFA31230)
+    val musicWashTop = Color(0xFFFFE3E7)
+    val musicWashBottom = Color(0xFFFF8A9A)
 
-    /** Deep end of the mine bubble. White text on #B01848 is about 6.9:1. */
-    val bubbleMine = Color(0xFFB01848)
-    val bubbleMineStart = Color(0xFFD6245A)
-    val bubbleMineEnd = Color(0xFFB01848)
+    /** Deep end of the mine bubble. White text on #B01839 stays above 6:1. */
+    val bubbleMine = Color(0xFFB01839)
+    val bubbleMineStart = Color(0xFFD62448)
+    val bubbleMineEnd = Color(0xFFB01839)
     val onMineMuted = Color(0xDBFFFFFF)
-    val metaTheirs = Color(0xFF7A4A58)
+    val metaTheirs = Color(0xFF7A4A53)
 
     fun mineBrush(): Brush = Brush.linearGradient(listOf(bubbleMineStart, bubbleMineEnd))
 
@@ -102,15 +107,15 @@ object LdColors {
     val cameraFaint = Color(0x66FFFFFF)
     val cameraError = Color(0xFFFFB4AB)
 
-    val mapPlaceholderLight = Color(0xFFF6D5DE)
+    val mapPlaceholderLight = Color(0xFFF6D5DB)
     val mapPlaceholderDark = Color(0xFF2A0F1C)
 
     /** Wallpaper swatches, same order as Store "color:0" … "color:5". */
     val wallpapers: List<Color> = listOf(
-        Color(0xFFF6D5DC),
+        Color(0xFFF6D5D9),
         Color(0xFFF6E6C8),
         Color(0xFFD5EBD8),
-        Color(0xFFFFD6E2),
+        Color(0xFFFFD6DE),
         Color(0xFFE4D7F6),
         Color(0xFF1A0A12),
     )
@@ -129,58 +134,58 @@ object LdColors {
     val hueMagenta = Color(0xFFFF00FF)
 
     val light = LdPalette(
-        skyTop = Color(0xFFFFE9EF),
+        skyTop = Color(0xFFFFE9ED),
         skyMid = Color(0xFFFFF7F9),
         skyBottom = Color(0xFFFFFFFF),
         blobA = Color(0x8CFFFFFF),
-        blobB = Color(0x66FFE3EA),
-        blobC = Color(0x33FF5C86),
+        blobB = Color(0x66FFE3E7),
+        blobC = Color(0x33FF5C76),
         glass = Color(0xB8FFFFFF),
         glassStrong = Color(0xD6FFFFFF),
         glassBorder = Color(0x99FFFFFF),
         ink = Color(0xFF1A0A12),
-        inkMuted = Color(0xFF7A4A58),
+        inkMuted = Color(0xFF7A4A53),
         chipOn = Color(0xFFFFFFFF),
         chipOnInk = Color(0xFF1A0A12),
-        pill = Color(0xFFD6245A),
+        pill = Color(0xFFD62448),
         onPill = Color(0xFFFFFFFF),
         pillBorder = Color(0x00000000),
         knob = Color(0xFFFFFFFF),
-        onKnob = Color(0xFFA3123E),
-        shadow = Color(0x33A3123E),
+        onKnob = Color(0xFFA31230),
+        shadow = Color(0x33A31230),
         bubbleTheirs = Color(0xB8FFFFFF),
-        navIdle = Color(0xFF8E5968),
+        navIdle = Color(0xFF8E5963),
         dialog = Color(0xFFFFF7F9),
-        textPrimary = Color(0xFFA3123E),
-        // White at 96% so chat text and photos do not show through a popup.
+        textPrimary = Color(0xFFA31230),
+        // Kept for callers that still read the token. Popups paint [glassFill] via [darkGlass].
         menu = Color(0xF5FFFFFF),
-        menuBorder = Color(0x33A3123E),
+        menuBorder = Color(0x33A31230),
     )
 
     val dark = LdPalette(
         skyTop = Color(0xFF1A0A12),
         skyMid = Color(0xFF220D18),
         skyBottom = Color(0xFF2A0F1C),
-        blobA = Color(0x33FF5C86),
-        blobB = Color(0x28D6245A),
-        blobC = Color(0x14FF5C86),
+        blobA = Color(0x33FF5C76),
+        blobB = Color(0x28D62448),
+        blobC = Color(0x14FF5C76),
         glass = Color(0x2EFFFFFF),
         glassStrong = Color(0x40FFFFFF),
         glassBorder = Color(0x66FFFFFF),
         ink = Color(0xFFFFF7F9),
-        inkMuted = Color(0xFFE4C6D0),
+        inkMuted = Color(0xFFE4C6CD),
         chipOn = Color(0xFFFFFFFF),
         chipOnInk = Color(0xFF1A0A12),
-        pill = Color(0xFFD6245A),
+        pill = Color(0xFFD62448),
         onPill = Color(0xFFFFFFFF),
         pillBorder = Color(0x00000000),
         knob = Color(0xFFFFFFFF),
-        onKnob = Color(0xFFA3123E),
+        onKnob = Color(0xFFA31230),
         shadow = Color(0x66000000),
         bubbleTheirs = Color(0xE6FFFFFF),
-        navIdle = Color(0xFFC9A3B0),
+        navIdle = Color(0xFFC9A3AC),
         dialog = Color(0xFF2A0F1C),
-        textPrimary = Color(0xFFFF5C86),
+        textPrimary = Color(0xFFFF5C76),
         // Wine #2A0F1C at 97%. Light text (ink) sits on this fill.
         menu = Color(0xF72A0F1C),
         menuBorder = Color(0x66FFFFFF),
@@ -188,6 +193,20 @@ object LdColors {
 
     val colors: LdPalette
         @Composable get() = if (isSystemInDarkTheme()) dark else light
+}
+
+/** True inside a dark-glass surface. [surfaceInk] then returns light text. */
+val LocalOnGlass = compositionLocalOf { false }
+
+/**
+ * Page ink on the blush or wine background. Light text while [LocalOnGlass] is set,
+ * so a row can sit in a glass card or on the page without a second color argument.
+ */
+@Composable
+fun surfaceInk(muted: Boolean = false): Color {
+    if (LocalOnGlass.current) return if (muted) LdColors.onGlassMuted else LdColors.onGlass
+    val c = LdColors.colors
+    return if (muted) c.inkMuted else c.ink
 }
 
 @Immutable
@@ -304,7 +323,7 @@ private val LightColors = lightColorScheme(
     onSurface = LdColors.navy,
     surfaceVariant = LdColors.light.glass,
     onSurfaceVariant = LdColors.light.inkMuted,
-    outline = Color(0xFF8A6570),
+    outline = Color(0xFF8A656C),
     error = Color(0xFFB42318),
     onError = LdColors.white,
     errorContainer = Color(0xFFFFDAD6),
@@ -325,7 +344,7 @@ private val DarkColors = darkColorScheme(
     onPrimary = LdColors.navy,
     primaryContainer = LdColors.deep,
     onPrimaryContainer = LdColors.tint,
-    secondary = Color(0xFFFFD6E2),
+    secondary = Color(0xFFFFD6DE),
     onSecondary = LdColors.navy,
     secondaryContainer = LdColors.deep,
     onSecondaryContainer = LdColors.tint,
@@ -335,7 +354,7 @@ private val DarkColors = darkColorScheme(
     onSurface = Color(0xFFFFF7F9),
     surfaceVariant = LdColors.dark.glass,
     onSurfaceVariant = LdColors.dark.inkMuted,
-    outline = Color(0xFFC9A3B0),
+    outline = Color(0xFFC9A3AC),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF93000A),
@@ -410,25 +429,22 @@ fun Modifier.ldGlass(
     strong: Boolean = false,
     solid: Boolean = false,
 ): Modifier {
-    val c = LdColors.colors
-    val fill = when {
-        // Menu fill is nearly opaque, so ink stays AA on top of a photo or a light wallpaper.
-        solid -> c.menu
-        strong -> c.glassStrong
-        else -> c.glass
-    }
-    val stroke = if (solid) c.menuBorder else c.glassBorder
-    return this
-        .shadow(elevation = 10.dp, shape = shape, ambientColor = c.shadow, spotColor = c.shadow)
-        .clip(shape)
-        .background(fill)
-        .border(width = 1.dp, color = stroke, shape = shape)
+    // strong and solid used to pick a lighter plate. Every glass surface is dark glass.
+    if (strong || solid) Unit
+    return this.darkGlass(shape)
 }
 
-/** Mostly opaque popup surface: theme menu fill plus a thin border. */
+/** Gradient rim used on dialogs that draw their own fill. */
 @Composable
 fun Modifier.ldPopupFrame(shape: Shape = MaterialTheme.shapes.extraLarge): Modifier {
-    return this.border(width = 1.dp, color = LdColors.colors.menuBorder, shape = shape)
+    return this.border(
+        width = 1.dp,
+        brush = Brush.linearGradient(
+            0f to Color.White.copy(alpha = 0.35f),
+            1f to Color.White.copy(alpha = 0.04f),
+        ),
+        shape = shape,
+    )
 }
 
 /** Accent tap pill. Same control as [LdButton] primary. */
@@ -467,7 +483,6 @@ fun GlassIconButton(
     modifier: Modifier = Modifier,
     solid: Boolean = false,
 ) {
-    val c = LdColors.colors
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier
@@ -482,13 +497,12 @@ fun GlassIconButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        LuIcon(icon, contentDescription = description, tint = c.ink)
+        LuIcon(icon, contentDescription = description, tint = LdColors.onGlass)
     }
 }
 
 @Composable
 fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    val c = LdColors.colors
     Column(
         modifier
             .ldGlass(RoundedCornerShape(LdRadius.tile))
@@ -498,14 +512,14 @@ fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = c.inkMuted,
+            color = LdColors.onGlassMuted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             value,
             style = MaterialTheme.typography.titleSmall,
-            color = c.ink,
+            color = LdColors.onGlass,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -567,7 +581,7 @@ private fun doodleTile(dark: Boolean): ImageBitmap {
     val size = 480
     val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
-    val ink = if (dark) 0xFFFF5C86.toInt() else 0xFFA3123E.toInt()
+    val ink = if (dark) 0xFFFF5C76.toInt() else 0xFFA31230.toInt()
     val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         style = android.graphics.Paint.Style.STROKE
         strokeWidth = 2.4f

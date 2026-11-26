@@ -12,13 +12,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
@@ -146,26 +145,32 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
                 style = LdType.Display,
                 color = LdColors.colors.ink,
             )
-            cards.forEachIndexed { index, card ->
-                when (card) {
-                    HubCard.Draw -> HubTile(
-                        title = stringResource(R.string.activity_draw),
-                        subtitle = drawSubtitle,
-                        index = index,
-                        onClick = onOpenDrawing,
-                        chipText = stringResource(R.string.activity_open),
-                    ) {
-                        DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
-                    }
-                    HubCard.Duet -> HubTile(
-                        title = stringResource(R.string.duet_title),
-                        subtitle = duetSubtitle(duetInstalled, duetNow),
-                        index = index,
-                        onClick = { DuetBridge.open(context) },
-                        chip = LdColors.primary,
-                        chipText = duetChip(duetInstalled, duetNow),
-                    ) {
-                        DuetMedia(playing = duetInstalled && duetNow?.playing == true)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                cards.forEachIndexed { index, card ->
+                    Box(Modifier.weight(1f)) {
+                        when (card) {
+                            HubCard.Draw -> HubTile(
+                                title = stringResource(R.string.activity_draw),
+                                subtitle = drawSubtitle,
+                                index = index,
+                                onClick = onOpenDrawing,
+                                chipText = stringResource(R.string.activity_open),
+                            ) {
+                                DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
+                            }
+                            HubCard.Duet -> HubTile(
+                                title = stringResource(R.string.duet_title),
+                                subtitle = stringResource(R.string.duet_card_sub),
+                                index = index,
+                                onClick = { DuetBridge.open(context) },
+                                chipText = duetChip(duetInstalled, duetNow),
+                            ) {
+                                DuetMedia(playing = duetInstalled && duetNow?.playing == true)
+                            }
+                        }
                     }
                 }
             }
@@ -174,20 +179,6 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
 }
 
 private enum class HubCard { Draw, Duet }
-
-@Composable
-private fun duetSubtitle(installed: Boolean, now: DuetState.Now?): String {
-    if (!installed) return stringResource(R.string.duet_install_body)
-    val current = now ?: return stringResource(R.string.duet_open)
-    val title = current.title
-    if (title.isBlank()) return stringResource(R.string.duet_open)
-    val artist = current.artist
-    return if (artist.isBlank()) {
-        stringResource(R.string.duet_playing_title, title)
-    } else {
-        stringResource(R.string.duet_playing_line, title, artist)
-    }
-}
 
 @Composable
 private fun duetChip(installed: Boolean, now: DuetState.Now?): String {
@@ -208,7 +199,6 @@ private fun HubTile(
     subtitle: String,
     index: Int,
     onClick: () -> Unit,
-    chip: Color = LdColors.bubbleMine,
     chipText: String,
     media: @Composable () -> Unit,
 ) {
@@ -218,6 +208,7 @@ private fun HubTile(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(1f)
             .appear(index)
             .pressScale(interaction)
             .ldGlass(shape, strong = true)
@@ -233,43 +224,43 @@ private fun HubTile(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp)
+                .weight(1f)
                 .clip(mediaShape),
         ) {
             media()
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .padding(bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    title,
-                    style = LdType.Title,
-                    color = LdColors.colors.ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    subtitle,
-                    style = LdType.Caption,
-                    color = LdColors.colors.inkMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
             Text(
                 chipText,
                 modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
                     .clip(RoundedCornerShape(LdRadius.chip))
-                    .background(chip)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .background(Color.White.copy(alpha = 0.92f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 style = LdType.Caption,
-                color = LdColors.white,
+                color = LdColors.navy,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                style = LdType.Title,
+                color = LdColors.onGlass,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                subtitle,
+                style = LdType.Caption,
+                color = LdColors.onGlassMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -338,29 +329,79 @@ private fun EmptyDrawingArt() {
 
 @Composable
 private fun DuetMedia(playing: Boolean) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(LdColors.navy, Color(0xFF3A1224), LdColors.primary),
-                ),
+    Canvas(Modifier.fillMaxSize().background(LdColors.navy)) {
+        drawRect(
+            Brush.linearGradient(
+                listOf(Color(0xFF3A1220), LdColors.deep, LdColors.primary),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height),
             ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(LdColors.glow.copy(alpha = 0.28f), radius = size.minDimension * 0.42f)
-        }
-        LuIcon(Lu.Headphones, contentDescription = null, tint = Color.White, size = 48.dp)
-        if (playing) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(LdColors.glow),
+        )
+        val disc = Offset(size.width * 0.42f, size.height * 0.42f)
+        val radius = size.minDimension * 0.30f
+        drawCircle(LdColors.glow.copy(alpha = 0.34f), radius * 1.45f, disc)
+        drawCircle(Color(0xFF12060C), radius, disc)
+        drawCircle(
+            Color.White.copy(alpha = 0.22f),
+            radius * 0.72f,
+            disc,
+            style = Stroke(width = 1.4.dp.toPx()),
+        )
+        drawCircle(
+            Color.White.copy(alpha = 0.14f),
+            radius * 0.46f,
+            disc,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+        drawCircle(LdColors.glow, radius * 0.16f, disc)
+        drawCircle(Color(0xFF12060C), radius * 0.045f, disc)
+        val note = size.minDimension * 0.20f
+        val head = Offset(size.width * 0.66f, size.height * 0.58f)
+        drawOval(
+            color = Color.White.copy(alpha = 0.92f),
+            topLeft = Offset(head.x - note * 0.22f, head.y - note * 0.12f),
+            size = Size(note * 0.46f, note * 0.28f),
+        )
+        drawLine(
+            color = Color.White.copy(alpha = 0.92f),
+            start = Offset(head.x + note * 0.22f, head.y),
+            end = Offset(head.x + note * 0.22f, head.y - note * 0.85f),
+            strokeWidth = note * 0.08f,
+            cap = StrokeCap.Round,
+        )
+        val flag = Path().apply {
+            moveTo(head.x + note * 0.22f, head.y - note * 0.85f)
+            quadraticBezierTo(
+                head.x + note * 0.85f,
+                head.y - note * 0.62f,
+                head.x + note * 0.28f,
+                head.y - note * 0.28f,
             )
+        }
+        drawPath(
+            flag,
+            Color.White.copy(alpha = 0.92f),
+            style = Stroke(width = note * 0.07f, cap = StrokeCap.Round),
+        )
+        val levels = if (playing) {
+            floatArrayOf(0.55f, 0.95f, 0.42f, 0.78f, 0.5f)
+        } else {
+            floatArrayOf(0.28f, 0.46f, 0.22f, 0.36f, 0.24f)
+        }
+        val barW = size.width * 0.055f
+        val gap = size.width * 0.03f
+        val total = levels.size * barW + (levels.size - 1) * gap
+        var x = (size.width - total) / 2f
+        val base = size.height * 0.90f
+        levels.forEach { level ->
+            val barH = size.height * 0.20f * level
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.90f),
+                topLeft = Offset(x, base - barH),
+                size = Size(barW, barH),
+                cornerRadius = CornerRadius(barW / 2f, barW / 2f),
+            )
+            x += barW + gap
         }
     }
 }

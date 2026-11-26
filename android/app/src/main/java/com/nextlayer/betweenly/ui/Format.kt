@@ -34,6 +34,19 @@ fun lastSeenPhrase(context: Context, epochMillis: Long, now: Long = System.curre
     }
 }
 
+/**
+ * When the battery value was accepted. [batSeen] is that clock. Older saves
+ * only have [lastSeen], which included the battery on a location message.
+ */
+fun batterySeenAt(bat: Int, batSeen: Long, lastSeen: Long): Long {
+    if (bat !in 0..100) return 0L
+    return if (batSeen > 0L) batSeen else lastSeen
+}
+
+/** True once the battery reading is an hour old or more. */
+fun batteryIsStale(seenAt: Long, now: Long): Boolean =
+    seenAt > 0L && now - seenAt >= 60L * 60L * 1000L
+
 /** Battery percent, with the word "charging" when the partner's phone is charging. */
 fun batteryPhrase(context: Context, percent: Int, charging: Boolean): String {
     if (percent !in 0..100) return context.getString(R.string.battery_unknown)

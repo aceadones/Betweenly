@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.WindowInsets
+import com.nextlayer.betweenly.PartnerLoc
 import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.Store
@@ -157,14 +158,14 @@ fun TrackScreen(onBack: () -> Unit) {
                                 Text(
                                     name,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = LdColors.colors.ink,
+                                    color = LdColors.onGlass,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
                                     partnerStatus,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = LdColors.colors.inkMuted,
+                                    color = LdColors.onGlassMuted,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -193,7 +194,7 @@ fun TrackScreen(onBack: () -> Unit) {
                                 .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
                                 .padding(16.dp),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = LdColors.colors.ink,
+                            color = LdColors.onGlass,
                         )
                     }
                     if (showCard && loc != null) {
@@ -204,23 +205,19 @@ fun TrackScreen(onBack: () -> Unit) {
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.colors.ink)
-                            Text(
-                                batteryPhrase(context, loc.bat, loc.chg),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = LdColors.colors.ink,
-                            )
+                            Text(name, style = MaterialTheme.typography.titleMedium, color = LdColors.onGlass)
+                            PartnerBattery(loc, now)
                             if (loc.lastSeen > 0L) {
                                 Text(
                                     stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now)),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = LdColors.colors.ink,
+                                    color = LdColors.onGlass,
                                 )
                             } else {
                                 Text(
                                     stringResource(R.string.no_update_yet),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = LdColors.colors.ink,
+                                    color = LdColors.onGlass,
                                 )
                             }
                         }
@@ -242,7 +239,7 @@ fun TrackScreen(onBack: () -> Unit) {
                             Text(
                                 name,
                                 style = MaterialTheme.typography.titleLarge,
-                                color = LdColors.colors.ink,
+                                color = LdColors.onGlass,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -262,18 +259,14 @@ fun TrackScreen(onBack: () -> Unit) {
                                 Text(
                                     partnerStatus,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = LdColors.colors.ink,
+                                    color = LdColors.onGlass,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
                         }
                         if (loc != null) {
-                            Text(
-                                batteryPhrase(context, loc.bat, loc.chg),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = LdColors.colors.inkMuted,
-                            )
+                            PartnerBattery(loc, now)
                             Text(
                                 if (loc.lastSeen > 0L) {
                                     stringResource(R.string.last_seen, lastSeenPhrase(context, loc.lastSeen, now))
@@ -281,7 +274,7 @@ fun TrackScreen(onBack: () -> Unit) {
                                     stringResource(R.string.no_update_yet)
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = LdColors.colors.inkMuted,
+                                color = LdColors.onGlassMuted,
                             )
                         }
                     }
@@ -289,6 +282,25 @@ fun TrackScreen(onBack: () -> Unit) {
                 RingButton(snackbar, Modifier.fillMaxWidth())
             }
         }
+    }
+}
+
+@Composable
+private fun PartnerBattery(loc: PartnerLoc, now: Long) {
+    val context = LocalContext.current
+    val seenAt = batterySeenAt(loc.bat, loc.batSeen, loc.lastSeen)
+    val fresh = loc.bat in 0..100 && !batteryIsStale(seenAt, now)
+    Text(
+        batteryPhrase(context, loc.bat, loc.chg),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (fresh) LdColors.onGlass else LdColors.onGlassMuted,
+    )
+    if (seenAt > 0L) {
+        Text(
+            stringResource(R.string.battery_age, lastSeenPhrase(context, seenAt, now)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = LdColors.onGlassMuted,
+        )
     }
 }
 

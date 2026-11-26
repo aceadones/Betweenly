@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -148,7 +149,7 @@ fun OnboardingScreen(onDone: () -> Unit, onPrivacy: () -> Unit) {
         )
         HorizontalPager(
             state = pager,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),
             userScrollEnabled = true,
         ) { index ->
             when (pages[index]) {

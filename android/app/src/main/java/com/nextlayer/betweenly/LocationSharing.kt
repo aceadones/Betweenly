@@ -19,8 +19,13 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -33,8 +38,8 @@ import kotlin.math.sqrt
  * 10 minutes) or [LiveLocationService] (live mode).
  *
  * [setShare] and [setLive] return immediately. The encrypted message is sent on
- * [AppScope]. Neither function asks for a permission; if location is denied, the
- * partner still gets battery updates.
+ * [AppScope]. Neither function asks for a permission. Battery is sent on its
+ * own by [BatteryUpdates], including while location sharing is off.
  */
 object LocationSharing {
     fun hasLocationPermission(context: Context): Boolean {
@@ -194,7 +199,7 @@ internal object LocationSender {
             val (bat, chg) = readBattery(context)
             val fix = readFix(context)
             val now = System.currentTimeMillis()
-            if (fix != null) {
+            val sent = if (fix != null) {
                 val whenFix = if (fix.time > 0L) fix.time else now
                 val acc = if (fix.hasAccuracy()) fix.accuracy else 0f
                 // DATA-FLOW: latitude, longitude, accuracy and battery, inside an encrypted "loc" message, to my partner. No wake ping.
@@ -207,6 +212,7 @@ internal object LocationSender {
                 // DATA-FLOW: battery only, inside an encrypted "bat" message, to my partner. Coordinates are not included. No wake ping.
                 Outbox.send(context, Msg.bat(bat, chg, now), wake = false)
             }
+            if (sent) BatteryUpdates.markSent(context, bat, chg)
         }
     }
 
@@ -305,10 +311,11 @@ class LocationAlarmReceiver : BroadcastReceiver() {
 }
 
 /**
- * After reboot the in-memory service is gone. If this phone is paired and
- * sharing, arm the slow alarm again. Live mode is not restarted here: starting
- * a location foreground service from boot is blocked on current Android, and
- * [App] retries it when the process comes up in the foreground.
+ * After reboot the in-memory service is gone. If this phone is paired, arm the
+ * battery alarm. If it is also sharing, arm the slow location alarm again.
+ * Live mode is not restarted here: starting a location foreground service from
+ * boot is blocked on current Android, and [App] retries it when the process
+ * comes up in the foreground.
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -317,11 +324,198 @@ class BootReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         AppScope.scope.launch {
             try {
-                if (!Store.isPaired(app) || !Store.shareOn(app)) return@launch
+                if (!Store.isPaired(app)) return@launch
+                BatteryUpdates.schedule(app)
+                if (!Store.shareOn(app)) return@launch
                 if (Store.liveOn(app)) {
                     Store.setLiveOn(app, false)
                 }
                 SharingScheduler.schedule(app)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+}
+
+/**
+ * Sends this phone's battery to the partner even when location sharing is off.
+ *
+ * A receiver for the sticky [Intent.ACTION_BATTERY_CHANGED] lives with the
+ * process. It sends when the percent moves by 5 or more, or charging changes.
+ * An inexact alarm about every 30 minutes sends again if the process was dead.
+ * Neither path includes coordinates. Wake stays off, same as a routine location.
+ */
+internal object BatteryUpdates {
+    private const val INTERVAL_MS = 30L * 60L * 1000L
+    private const val STALE_MS = 25L * 60L * 1000L
+    private const val STEP = 5
+    private const val ACTION = "com.nextlayer.betweenly.BATTERY_TICK"
+    private val gate = Mutex()
+    private val registered = AtomicBoolean(false)
+
+    @Volatile
+    private var lastAttemptAt = 0L
+
+    fun start(context: Context) {
+        val app = context.applicationContext
+        register(app)
+        if (Store.isPaired(app)) schedule(app)
+    }
+
+    /** Pairing just finished. Send the current percent now and arm the fallback alarm. */
+    fun arm(context: Context) {
+        val app = context.applicationContext
+        schedule(app)
+        AppScope.scope.launch {
+            try {
+                publish(app, force = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The alarm still sends later.
+            }
+        }
+    }
+
+    fun schedule(context: Context) {
+        val app = context.applicationContext
+        val manager = app.getSystemService(AlarmManager::class.java) ?: return
+        val at = SystemClock.elapsedRealtime() + INTERVAL_MS
+        try {
+            manager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, at, pending(app))
+        } catch (_: Exception) {
+            // Rejected after a force-stop. The next process start tries again.
+        }
+    }
+
+    fun cancel(context: Context) {
+        val app = context.applicationContext
+        val manager = app.getSystemService(AlarmManager::class.java) ?: return
+        try {
+            manager.cancel(pending(app))
+        } catch (_: Exception) {
+            // Already gone.
+        }
+    }
+
+    /** A location message already carried this sample, so the 5% watcher should not repeat it. */
+    fun markSent(context: Context, level: Int, charging: Boolean) {
+        if (level !in 0..100) return
+        Store.setSelfBattery(context.applicationContext, level, charging, System.currentTimeMillis())
+    }
+
+    suspend fun publish(context: Context, level: Int? = null, charging: Boolean? = null, force: Boolean) {
+        val app = context.applicationContext
+        if (!Store.isPaired(app)) return
+        val sample = if (level != null && charging != null) level to charging else readBattery(app)
+        val pct = sample.first
+        val chg = sample.second
+        if (pct !in 0..100) return
+        gate.withLock {
+            if (!Store.isPaired(app)) return@withLock
+            val prev = Store.selfBattery(app)
+            val levelChanged = !prev.known || abs(pct - prev.level) >= STEP
+            val chargeChanged = !prev.known || prev.charging != chg
+            val now = System.currentTimeMillis()
+            val stale = prev.at <= 0L || now - prev.at >= STALE_MS
+            if (!force && !levelChanged && !chargeChanged && !stale) return@withLock
+            if (!force && !levelChanged && !chargeChanged && now - lastAttemptAt < 60_000L) return@withLock
+            lastAttemptAt = now
+            // DATA-FLOW: battery percent and charging, encrypted "bat", to my partner. No coordinates. No wake ping. Sent even when location sharing is off.
+            val ok = Outbox.send(app, Msg.bat(pct, chg, now), wake = false)
+            if (ok) Store.setSelfBattery(app, pct, chg, now)
+        }
+    }
+
+    private fun register(app: Context) {
+        if (!registered.compareAndSet(false, true)) return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, intent: Intent?) {
+                if (intent?.action != Intent.ACTION_BATTERY_CHANGED) return
+                val pendingResult = goAsync()
+                val sample = batteryFrom(intent)
+                AppScope.scope.launch {
+                    try {
+                        if (sample.first in 0..100) {
+                            publish(app, sample.first, sample.second, force = false)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // A bad sample must not kill the process.
+                    } finally {
+                        pendingResult.finish()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val sticky = try {
+            ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        } catch (_: Exception) {
+            registered.set(false)
+            null
+        }
+        if (sticky == null) return
+        val sample = batteryFrom(sticky)
+        if (sample.first !in 0..100) return
+        AppScope.scope.launch {
+            try {
+                publish(app, sample.first, sample.second, force = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The next change, or the alarm, tries again.
+            }
+        }
+    }
+
+    private fun pending(context: Context): PendingIntent {
+        val intent = Intent(context, BatteryAlarmReceiver::class.java).setAction(ACTION)
+        return PendingIntent.getBroadcast(
+            context,
+            43,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+}
+
+private fun batteryFrom(intent: Intent): Pair<Int, Boolean> {
+    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    if (level < 0 || scale <= 0) return -1 to false
+    val pct = ((level * 100f) / scale.toFloat()).roundToInt().coerceIn(0, 100)
+    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+    val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+        status == BatteryManager.BATTERY_STATUS_FULL
+    return pct to charging
+}
+
+/**
+ * Fires the 30-minute battery fallback. Registered in the manifest so it can
+ * run after the process has been killed. The percent broadcast itself cannot
+ * be manifest-registered, so this is the path that works while the app is dead.
+ */
+class BatteryAlarmReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent?) {
+        val pending = goAsync()
+        val app = context.applicationContext
+        AppScope.scope.launch {
+            try {
+                if (Store.isPaired(app)) {
+                    // force is false so a sample just sent by the sticky read is not sent again.
+                    // The 25-minute stale window is shorter than this alarm, so a quiet phone still sends.
+                    BatteryUpdates.publish(app, force = false)
+                    BatteryUpdates.schedule(app)
+                } else {
+                    BatteryUpdates.cancel(app)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (Store.isPaired(app)) BatteryUpdates.schedule(app)
             } finally {
                 pending.finish()
             }

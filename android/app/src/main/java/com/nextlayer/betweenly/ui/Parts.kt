@@ -31,9 +31,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,8 +46,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -70,6 +75,51 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 
+/**
+ * Dark glass in both app themes. No blur. Fill is near-black wine at 78% so white
+ * at 70% stays above 4.5:1 on the light blush. A short white sheen sits at the top.
+ * The rim fades from 35% white at the top-left to 4% at the bottom-right.
+ */
+@Composable
+fun Modifier.darkGlass(
+    shape: Shape = RoundedCornerShape(LdRadius.card),
+): Modifier {
+    val sheen = Brush.verticalGradient(
+        0f to Color.White.copy(alpha = 0.16f),
+        0.24f to Color.White.copy(alpha = 0.04f),
+        0.55f to Color.Transparent,
+    )
+    val rim = Brush.linearGradient(
+        0f to Color.White.copy(alpha = 0.35f),
+        1f to Color.White.copy(alpha = 0.04f),
+    )
+    return this
+        .shadow(
+            elevation = 8.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = Color.Black.copy(alpha = 0.22f),
+            spotColor = Color.Black.copy(alpha = 0.16f),
+        )
+        .clip(shape)
+        .drawWithCache {
+            val strokePx = 1.dp.toPx()
+            val inset = strokePx / 2f
+            val inner = Size(
+                (size.width - strokePx).coerceAtLeast(1f),
+                (size.height - strokePx).coerceAtLeast(1f),
+            )
+            val outline = shape.createOutline(inner, layoutDirection, this)
+            onDrawBehind {
+                drawRect(LdColors.glassFill)
+                drawRect(sheen)
+                translate(left = inset, top = inset) {
+                    drawOutline(outline, rim, style = Stroke(width = strokePx))
+                }
+            }
+        }
+}
+
 /** Title row used by settings and the privacy page. */
 @Composable
 fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
@@ -85,26 +135,25 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
             )
             Spacer(Modifier.width(8.dp))
         }
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = LdColors.colors.ink)
+        Text(title, style = MaterialTheme.typography.headlineMedium, color = surfaceInk())
     }
 }
 
 /** A small status pill: "Live" or "Sharing paused". */
 @Composable
 fun StatusChip(text: String, emphasized: Boolean) {
-    val c = LdColors.colors
-    Surface(
-        shape = RoundedCornerShape(LdRadius.chip),
-        color = if (emphasized) c.chipOn else c.glass,
-        border = BorderStroke(1.dp, c.glassBorder),
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
-    ) {
+    val shape = RoundedCornerShape(LdRadius.chip)
+    val plate = if (emphasized) {
+        Modifier.clip(shape).background(Color.White.copy(alpha = 0.92f))
+    } else {
+        Modifier.darkGlass(shape)
+    }
+    Box(plate) {
         Text(
             text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelLarge,
-            color = if (emphasized) c.chipOnInk else c.ink,
+            color = if (emphasized) LdColors.navy else LdColors.onGlass,
         )
     }
 }
@@ -152,9 +201,9 @@ fun RoundAvatar(
 private fun BoxInitial(letter: String, size: Dp, modifier: Modifier) {
     val dark = isSystemInDarkTheme()
     val wash = if (dark) {
-        Brush.linearGradient(listOf(Color(0xFF4A1830), Color(0xFFD6245A)))
+        Brush.linearGradient(listOf(Color(0xFF4A182B), Color(0xFFD62448)))
     } else {
-        Brush.linearGradient(listOf(Color(0xFFFFE3EA), Color(0xFFFF8AA6)))
+        Brush.linearGradient(listOf(Color(0xFFFFE3E7), Color(0xFFFF8A9A)))
     }
     val ink = if (dark) LdColors.white else LdColors.navy
     val style = when {
@@ -295,14 +344,14 @@ internal fun ToggleRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) {
-            LuIcon(icon, contentDescription = null, tint = LdColors.colors.ink, size = 22.dp)
+            LuIcon(icon, contentDescription = null, tint = surfaceInk(), size = 22.dp)
             Spacer(Modifier.width(12.dp))
         }
         Column(modifier = Modifier.weight(1f).padding(end = 12.dp, top = 8.dp, bottom = 8.dp)) {
             Text(
                 title,
                 style = MaterialTheme.typography.bodyLarge,
-                color = LdColors.colors.ink,
+                color = surfaceInk(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .semantics {
@@ -315,7 +364,7 @@ internal fun ToggleRow(
             Text(
                 help,
                 style = MaterialTheme.typography.bodySmall,
-                color = LdColors.colors.inkMuted,
+                color = surfaceInk(muted = true),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -332,10 +381,11 @@ private fun LdSwitch(checked: Boolean, enabled: Boolean) {
         animationSpec = Motion.spring<Dp>(),
         label = "switch",
     )
+    val onGlass = LocalOnGlass.current
     val track = when {
-        !enabled -> LdColors.colors.inkMuted.copy(alpha = 0.28f)
+        !enabled -> if (onGlass) Color.White.copy(alpha = 0.16f) else LdColors.colors.inkMuted.copy(alpha = 0.28f)
         checked -> LdColors.primary
-        else -> LdColors.colors.glassBorder
+        else -> if (onGlass) Color.White.copy(alpha = 0.28f) else LdColors.colors.glassBorder
     }
     Box(
         Modifier

@@ -226,9 +226,9 @@ private fun ChoiceCard(
                 .aspectRatio(1f),
             contentAlignment = Alignment.Center,
         ) { art() }
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = LdColors.colors.ink)
-        Text(help, style = MaterialTheme.typography.bodyMedium, color = LdColors.colors.inkMuted)
-        LuIcon(Lu.ArrowRight, contentDescription = null, tint = LdColors.colors.textPrimary, size = 20.dp)
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = LdColors.onGlass)
+        Text(help, style = MaterialTheme.typography.bodyMedium, color = LdColors.onGlassMuted)
+        LuIcon(Lu.ArrowRight, contentDescription = null, tint = LdColors.onGlass, size = 20.dp)
     }
 }
 

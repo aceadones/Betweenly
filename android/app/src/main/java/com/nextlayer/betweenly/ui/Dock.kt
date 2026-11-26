@@ -11,7 +11,6 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -118,8 +118,7 @@ fun LdBottomBar(tabs: List<LdTab>) {
                     )
                 }
             }
-            val washAlpha = if (isSystemInDarkTheme()) 0.34f else 0.16f
-            val wash = LdColors.primary.copy(alpha = washAlpha)
+            val wash = Color.White
             val drawn = span.value
             if (drawn.w > 1f) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -163,8 +162,7 @@ private fun RowScope.DockTab(
     weight: Float,
     modifier: Modifier,
 ) {
-    val c = LdColors.colors
-    val tint = if (tab.selected) c.ink else c.navIdle
+    val tint = if (tab.selected) LdColors.navy else LdColors.onGlass
     val interaction = remember(tab.label) { MutableInteractionSource() }
     val spoken = if (tab.badge > 0) {
         stringResource(R.string.tab_unread, tab.label, tab.badge)

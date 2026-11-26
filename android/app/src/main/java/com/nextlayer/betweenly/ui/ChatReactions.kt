@@ -124,6 +124,19 @@ object ChatReactions {
         }
     }
 
+    /**
+     * One emoji per person. The same emoji from both people is listed twice.
+     * Partner first, then this phone. No counts.
+     */
+    fun badges(json: JSONObject): List<String> {
+        val out = ArrayList<String>(2)
+        val theirs = json.optString("rx").trim()
+        val mine = json.optString("mx").trim()
+        if (theirs.isNotEmpty()) out.add(theirs)
+        if (mine.isNotEmpty()) out.add(mine)
+        return out
+    }
+
     /** Partner emoji first, then this phone's, with a count when both match. */
     fun chips(json: JSONObject): List<Pair<String, Int>> {
         val theirs = json.optString("rx")
@@ -215,13 +228,13 @@ fun ReactionPill(
                     Text(
                         stringResource(R.string.chat_react_done),
                         style = MaterialTheme.typography.labelLarge,
-                        color = LdColors.colors.ink,
+                        color = LdColors.onGlass,
                     )
                 } else {
                     LuIcon(
                         Lu.SmilePlus,
                         contentDescription = stringResource(R.string.chat_react_edit),
-                        tint = LdColors.colors.ink,
+                        tint = LdColors.onGlass,
                     )
                 }
             }
@@ -280,9 +293,9 @@ private fun ActionRow(icon: ImageVector, label: String, onClick: () -> Unit) {
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LuIcon(icon, contentDescription = null, size = 20.dp, tint = LdColors.colors.ink)
+        LuIcon(icon, contentDescription = null, size = 20.dp, tint = LdColors.onGlass)
         Spacer(Modifier.width(12.dp))
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = LdColors.colors.ink)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = LdColors.onGlass)
     }
 }
 

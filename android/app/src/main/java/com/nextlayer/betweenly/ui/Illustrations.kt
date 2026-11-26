@@ -151,21 +151,21 @@ private fun WelcomeCanvas() {
     val along = drift("plane", 0.16f, 0.84f, 2800, reverse = true)
     val dash = drift("dash", 0f, 28f, 1600, reverse = false)
     val sky = if (dark) {
-        listOf(Color(0xFF1A0A12), Color(0xFF2A0F1C), Color(0xFF3A1228))
+        listOf(Color(0xFF1A0A12), Color(0xFF2A0F1C), Color(0xFF3A1224))
     } else {
-        listOf(Color(0xFFFF8AA6), Color(0xFFFFE3EA), Color(0xFFFFF7F9))
+        listOf(Color(0xFFFF8A9A), Color(0xFFFFE3E7), Color(0xFFFFF7F9))
     }
     val ink = if (dark) Color(0xFFFFF7F9) else LdColors.navy
-    val glow = if (dark) Color(0xFFFF5C86) else Color(0xFFFFFFFF)
+    val glow = if (dark) Color(0xFFFF5C76) else Color(0xFFFFFFFF)
     Canvas(Modifier.fillMaxSize()) {
         drawRect(Brush.verticalGradient(sky))
         drawCircle(
-            color = if (dark) Color(0x33D6245A) else Color(0x55FFFFFF),
+            color = if (dark) Color(0x33D62448) else Color(0x55FFFFFF),
             radius = size.minDimension * 0.42f,
             center = Offset(size.width * 0.12f, size.height * 0.08f),
         )
         drawCircle(
-            color = if (dark) Color(0x224A1830) else Color(0x66FFFFFF),
+            color = if (dark) Color(0x224A182B) else Color(0x66FFFFFF),
             radius = size.minDimension * 0.28f,
             center = Offset(size.width * 0.88f, size.height * 0.16f),
         )
@@ -182,9 +182,9 @@ private fun WelcomeCanvas() {
         drawOval(
             brush = Brush.radialGradient(
                 colors = if (dark) {
-                    listOf(Color(0xFF4A1830), Color(0xFF2A0F1C))
+                    listOf(Color(0xFF4A182B), Color(0xFF2A0F1C))
                 } else {
-                    listOf(Color(0xFFFFFFFF), Color(0xFFFFD6E2))
+                    listOf(Color(0xFFFFFFFF), Color(0xFFFFD6DE))
                 },
                 center = Offset(cx, cy - ry * 0.2f),
                 radius = rx,
@@ -212,7 +212,7 @@ private fun WelcomeCanvas() {
         )
         drawPath(
             arc,
-            color = if (dark) Color(0xFFFFE3EA) else LdColors.navy.copy(alpha = 0.75f),
+            color = if (dark) Color(0xFFFFE3E7) else LdColors.navy.copy(alpha = 0.75f),
             style = Stroke(
                 width = 2.4.dp.toPx(),
                 cap = StrokeCap.Round,
@@ -256,9 +256,9 @@ private fun TileCanvas(icon: ImageVector, modifier: Modifier) {
             drawRoundRect(
                 brush = Brush.linearGradient(
                     if (dark) {
-                        listOf(Color(0xFF3A1228), Color(0xFF1A0A12))
+                        listOf(Color(0xFF3A1224), Color(0xFF1A0A12))
                     } else {
-                        listOf(Color(0xFFFFFFFF), Color(0xFFFFE3EA))
+                        listOf(Color(0xFFFFFFFF), Color(0xFFFFE3E7))
                     },
                 ),
                 cornerRadius = CornerRadius(28.dp.toPx(), 28.dp.toPx()),
@@ -292,11 +292,11 @@ fun TicketArt(modifier: Modifier = Modifier) {
 private fun TicketCanvas() {
     val dark = isSystemInDarkTheme()
     val ink = if (dark) Color(0xFFFFF7F9) else LdColors.navy
-    val paper = if (dark) Color(0xFF4A1830) else Color.White
+    val paper = if (dark) Color(0xFF4A182B) else Color.White
     Canvas(Modifier.fillMaxSize()) {
         drawRoundRect(
             brush = Brush.linearGradient(
-                if (dark) listOf(Color(0xFF5A1840), Color(0xFF2A0F1C)) else listOf(Color(0xFFFFE9EF), Color(0xFFFFD6E2)),
+                if (dark) listOf(Color(0xFF5A1839), Color(0xFF2A0F1C)) else listOf(Color(0xFFFFE9ED), Color(0xFFFFD6DE)),
             ),
             cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
         )
@@ -357,7 +357,7 @@ private fun InboxCanvas() {
     Canvas(Modifier.fillMaxSize()) {
         drawRoundRect(
             brush = Brush.linearGradient(
-                if (dark) listOf(Color(0xFF3A1228), Color(0xFF1A0A12)) else listOf(Color(0xFFFFF7F9), Color(0xFFFFE3EA)),
+                if (dark) listOf(Color(0xFF3A1224), Color(0xFF1A0A12)) else listOf(Color(0xFFFFF7F9), Color(0xFFFFE3E7)),
             ),
             cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
         )
@@ -400,7 +400,7 @@ private fun InboxCanvas() {
 fun RadarStrip(hasPoint: Boolean, modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
     val sweep = drift("radar", 0f, 360f, 4200, reverse = false)
-    val ink = if (dark) Color(0xFFFFE3EA) else LdColors.navy
+    val ink = if (dark) Color(0xFFFFE3E7) else LdColors.navy
     Canvas(modifier) {
         val c = Offset(size.width * 0.5f, size.height * 0.78f)
         val radii = listOf(0.28f, 0.5f, 0.74f)
@@ -447,7 +447,7 @@ fun MeetArc(modifier: Modifier = Modifier) {
 @Composable
 private fun MeetCanvas() {
     val dark = isSystemInDarkTheme()
-    val ink = if (dark) Color(0xFFFFE3EA) else LdColors.navy
+    val ink = if (dark) Color(0xFFFFE3E7) else LdColors.navy
     Canvas(Modifier.fillMaxSize()) {
         val path = Path().apply {
             moveTo(size.width * 0.16f, size.height * 0.62f)
@@ -475,7 +475,7 @@ private fun MeetCanvas() {
 fun WaitingArc(modifier: Modifier = Modifier) {
     val dark = isSystemInDarkTheme()
     val pulse = drift("wait", 0.35f, 1f, 1100, reverse = true)
-    val ink = if (dark) Color(0xFFFFE3EA) else LdColors.navy
+    val ink = if (dark) Color(0xFFFFE3E7) else LdColors.navy
     Canvas(modifier.size(120.dp)) {
         val c = Offset(size.width / 2f, size.height * 0.62f)
         drawArc(

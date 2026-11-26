@@ -95,7 +95,7 @@ internal fun DrawWheelBody(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.draw_picker), style = LdType.Title, color = LdColors.colors.ink)
+        Text(stringResource(R.string.draw_picker), style = LdType.Title, color = surfaceInk())
         HueRing(hue = hue, color = picked, onHue = { fromWheel(it, sat, value) })
         SvSquare(hue = hue, sat = sat, value = value, onChange = { s, v -> fromWheel(hue, s, v) })
         HexRow(
@@ -118,7 +118,7 @@ internal fun DrawWheelBody(
 
 @Composable
 private fun HexRow(hex: String, color: Color, onHex: (String) -> Unit) {
-    val ink = LdColors.colors.ink
+    val ink = surfaceInk()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -129,10 +129,10 @@ private fun HexRow(hex: String, color: Color, onHex: (String) -> Unit) {
                 .size(48.dp)
                 .clip(CircleShape)
                 .background(color)
-                .border(1.dp, LdColors.colors.ink.copy(alpha = 0.35f), CircleShape),
+                .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.draw_hex), style = LdType.Caption, color = LdColors.colors.inkMuted)
+            Text(stringResource(R.string.draw_hex), style = LdType.Caption, color = surfaceInk(muted = true))
             BasicTextField(
                 value = hex,
                 onValueChange = { incoming ->
@@ -146,13 +146,13 @@ private fun HexRow(hex: String, color: Color, onHex: (String) -> Unit) {
                     capitalization = KeyboardCapitalization.Characters,
                     keyboardType = KeyboardType.Ascii,
                 ),
-                cursorBrush = SolidColor(LdColors.primary),
+                cursorBrush = SolidColor(LdColors.white),
                 decorationBox = { inner ->
                     Box(
                         Modifier
                             .fillMaxWidth()
                             .heightIn(min = 48.dp)
-                            .border(1.dp, LdColors.colors.menuBorder, RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
                             .padding(horizontal = 12.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) { inner() }
@@ -166,7 +166,7 @@ private fun HexRow(hex: String, color: Color, onHex: (String) -> Unit) {
 private fun HueRing(hue: Float, color: Color, onHue: (Float) -> Unit) {
     val stroke = 22.dp
     val hueState = rememberUpdatedState(onHue)
-    val marker = LdColors.colors.menu
+    val marker = LdColors.white
     Canvas(
         Modifier
             .size(188.dp)
@@ -233,7 +233,7 @@ private fun SvSquare(hue: Float, sat: Float, value: Float, onChange: (Float, Flo
         Modifier
             .size(156.dp)
             .clip(shape)
-            .border(1.dp, LdColors.colors.menuBorder, shape)
+            .border(1.dp, Color.White.copy(alpha = 0.28f), shape)
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
@@ -276,7 +276,7 @@ internal fun SheetTextButton(text: String, onClick: () -> Unit) {
             .pressScale(interaction)
             .heightIn(min = 48.dp)
             .clip(shape)
-            .background(LdColors.primary.copy(alpha = 0.12f))
+            .background(LdColors.white.copy(alpha = 0.92f))
             .clickable(
                 interactionSource = interaction,
                 indication = LocalIndication.current,
@@ -285,7 +285,7 @@ internal fun SheetTextButton(text: String, onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = LdType.Title, color = LdColors.colors.ink)
+        Text(text, style = LdType.Title, color = LdColors.navy)
     }
 }
 
