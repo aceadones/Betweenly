@@ -252,6 +252,11 @@ fn handle_line(session: &Mutex<Session>, relay: &str, outbox: &str, line: &str) 
             }
             false
         }
+        "typing" => {
+            let json = format!("{{\"t\":\"typing\",\"on\":{}}}", if arg.trim() == "off" { "false" } else { "true" });
+            let _ = send_json(session, relay, outbox, &json, false);
+            false
+        }
         "draw" => {
             send_drawing(session, relay, outbox, arg);
             false

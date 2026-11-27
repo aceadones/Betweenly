@@ -19,6 +19,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -1337,5 +1338,45 @@ private fun hostOf(url: String): String {
         java.net.URL(url).host
     } catch (_: Exception) {
         ""
+    }
+}
+
+
+/** Three bouncing dots in a small incoming bubble, shown while the partner types. */
+@Composable
+fun TypingBubble() {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "typing")
+    Row(
+        Modifier
+            .padding(top = 6.dp)
+            .bubblePlate(false, ChatTheme.bubble, false)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for (i in 0..2) {
+            val phase by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.keyframes {
+                        durationMillis = 900
+                        0f at (i * 150)
+                        1f at (i * 150 + 220)
+                        0f at (i * 150 + 440)
+                    },
+                ),
+                label = "dot$i",
+            )
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .graphicsLayer {
+                        translationY = -phase * 5.dp.toPx()
+                        alpha = 0.45f + 0.55f * phase
+                    }
+                    .background(ChatTheme.onTheirs(), CircleShape),
+            )
+        }
     }
 }

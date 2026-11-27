@@ -300,6 +300,7 @@ object Inbox {
                 "ringstop" -> RingService.stop(context, json.optString("rid"))
                 "ringack" -> RingController.onPartnerAck(context, json.optString("rid"))
                 "profile" -> applyProfile(context, json)
+                "typing" -> Typing.onIncoming(json)
                 "pet" -> PetStore.applyRemote(context, json.optInt("skin", 0), json.optString("o", ""), json.optLong("ts", 0L))
                 "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
                 "dlv", "seen" -> ChatInbound.handle(context, json)

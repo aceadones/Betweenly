@@ -56,6 +56,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import com.nextlayer.betweenly.Outbox
+import com.nextlayer.betweenly.Typing
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -292,7 +295,11 @@ private fun ChatBody(
             } catch (_: Exception) {
                 // No network. The next pass tries again.
             }
-            delay(5_000)
+            // Poll faster while the two of you are clearly in a live exchange.
+            val now = System.currentTimeMillis()
+            val live = now - maxOf(ChatStore.partnerHeardAt, Typing.lastIncoming) < 60_000L
+            val typing = Typing.partnerUntil.value > now
+            delay(if (typing) 1_200L else if (live) 2_000L else 5_000L)
         }
     }
 
@@ -562,6 +569,33 @@ private fun ChatBody(
         else -> stringResource(R.string.last_seen, lastSeenPhrase(context, seenAt, now))
     }
     val view = LocalView.current
+    val partnerActive = now - seenAt in 0..90_000L
+    LaunchedEffect(text) {
+        if (Store.chatHideActivity(context) || !partnerActive) return@LaunchedEffect
+        val t = System.currentTimeMillis()
+        if (text.isNotBlank()) {
+            if (t - Typing.lastSentOn > 3_000L) {
+                Typing.lastSentOn = t
+                Typing.sentOn = true
+                // DATA-FLOW: a tiny "typing" signal, encrypted, to the partner via the relay.
+                Outbox.send(context, Typing.message(true))
+            }
+        } else if (Typing.sentOn) {
+            Typing.sentOn = false
+            Typing.lastSentOn = 0L
+            Outbox.send(context, Typing.message(false))
+        }
+    }
+    val typingUntil by Typing.partnerUntil.collectAsState()
+    var partnerTyping by remember { mutableStateOf(false) }
+    LaunchedEffect(typingUntil) {
+        val wait = typingUntil - System.currentTimeMillis()
+        if (wait > 0) {
+            partnerTyping = true
+            delay(wait)
+        }
+        partnerTyping = false
+    }
 
     SideEffect {
         if (!renderMenu) {
@@ -785,6 +819,9 @@ private fun ChatBody(
                                 bottom = composerHeight + 8.dp,
                             ),
                         ) {
+                            if (partnerTyping) {
+                                items(count = 1, key = { "typing-dots" }) { TypingBubble() }
+                            }
                             itemsIndexed(
                                 items = rows,
                                 key = { _, row ->
@@ -2106,3 +2143,4 @@ private fun displayName(context: android.content.Context, uri: Uri): String {
         "file"
     }
 }
+
