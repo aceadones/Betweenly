@@ -168,11 +168,24 @@ fun ChatScreen(
 ) {
     val context = LocalContext.current
     SideEffect { ChatController.install(context) }
-    DisposableEffect(Unit) {
-        AppState.chatOpen = true
-        ChatStore.markRead(context)
-        ChatNotifications.cancel(context)
+    // The chat counts as open only while this screen is really on show (resumed), not while the app
+    // sits in the background with this screen still composed. Otherwise new messages would be marked
+    // read and their notice cancelled the moment it appeared.
+    val openLifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(openLifecycle) {
+        fun sync() {
+            val on = openLifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            AppState.chatOpen = on
+            if (on) {
+                ChatStore.markRead(context)
+                ChatNotifications.cancel(context)
+            }
+        }
+        val observer = LifecycleEventObserver { _, _ -> sync() }
+        openLifecycle.addObserver(observer)
+        sync()
         onDispose {
+            openLifecycle.removeObserver(observer)
             AppState.chatOpen = false
             VoicePlay.stop()
         }
@@ -282,8 +295,10 @@ private fun ChatBody(
                 if (ChatStore.hasAttachment(context, message.id)) message.id else null
             }.toSet()
         }
-        if (AppState.chatOpen) ChatStore.markRead(context)
-        ChatNotifications.cancel(context)
+        if (AppState.chatOpen) {
+            ChatStore.markRead(context)
+            ChatNotifications.cancel(context)
+        }
     }
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -299,7 +314,7 @@ private fun ChatBody(
             val now = System.currentTimeMillis()
             val live = now - maxOf(ChatStore.partnerHeardAt, Typing.lastIncoming) < 60_000L
             val typing = Typing.partnerUntil.value > now
-            delay(if (typing) 1_200L else if (live) 2_000L else 5_000L)
+            delay(if (typing) 800L else if (live) 1_000L else 4_000L)
         }
     }
 

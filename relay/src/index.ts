@@ -44,7 +44,7 @@ const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const b64url = (u: Uint8Array) => b64(u).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const p = url.pathname.split("/").filter(Boolean);
     const json = (o: unknown, s = 200) =>
@@ -81,8 +81,9 @@ export default {
           const blob = await req.arrayBuffer();
           if (blob.byteLength === 0 || blob.byteLength > MAX_BLOB) return json({ error: "bad size" }, 413);
           await box.push(blob);
-          let woke = false;
-          if (url.searchParams.get("wake") === "1") woke = await wake(env, p[1]);
+          // The wake-up ping goes out after the reply, so sending never waits for Google.
+          const woke = url.searchParams.get("wake") === "1";
+          if (woke) ctx.waitUntil(wake(env, p[1]).catch(() => false));
           return json({ ok: true, woke });
         }
         if (req.method === "GET") {
@@ -151,7 +152,11 @@ async function wake(env: Env, mailbox: string): Promise<boolean> {
   return r.ok;
 }
 
+// A Google access token lasts an hour. Keep one per Worker instance instead of signing a new one per message.
+let cachedAccess: { token: string; until: number } | null = null;
+
 async function accessToken(sa: { client_email: string; private_key: string }): Promise<string> {
+  if (cachedAccess && cachedAccess.until > Date.now() + 60_000) return cachedAccess.token;
   const enc = new TextEncoder();
   const now = Math.floor(Date.now() / 1000);
   const head = b64url(enc.encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
@@ -186,7 +191,9 @@ async function accessToken(sa: { client_email: string; private_key: string }): P
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
-  return ((await r.json()) as { access_token: string }).access_token;
+  const tok = ((await r.json()) as { access_token: string; expires_in?: number });
+  cachedAccess = { token: tok.access_token, until: Date.now() + (tok.expires_in ?? 3000) * 1000 };
+  return tok.access_token;
 }
 
 /**
