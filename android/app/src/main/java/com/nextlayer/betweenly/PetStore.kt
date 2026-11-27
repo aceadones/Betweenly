@@ -29,6 +29,8 @@ object PetStore {
         val streak: Int,
         val mineToday: Boolean,
         val theirsToday: Boolean,
+        /** The lost streak that can still be brought back, or 0. */
+        val restorable: Int = 0,
     )
 
     private fun prefs(context: Context) =
@@ -56,6 +58,7 @@ object PetStore {
             e.apply()
         }
         rev.value = rev.value + 1
+        PetReminder.schedule(context)
     }
 
     /** The streak as it stands now. A missed day resets it to 0. */
@@ -64,11 +67,26 @@ object PetStore {
         val day = today()
         val last = p.getLong(STREAK_DAY, -1L)
         val alive = last >= day - 1
+        val lost = if (!alive) p.getInt(STREAK, 0) else 0
+        val canRestore = lost > 0 && p.getLong(RESTORE_DAY, -100L) <= day - 7
         return State(
             streak = if (alive) p.getInt(STREAK, 0) else 0,
             mineToday = p.getLong(MINE, -1L) == day,
             theirsToday = p.getLong(THEIRS, -1L) == day,
+            restorable = if (canRestore) lost else 0,
         )
+    }
+
+    private const val RESTORE_DAY = "restore_day"
+
+    /** Brings back a lost streak. Allowed once every 7 days. It then continues when you both message today. */
+    fun restore(context: Context): Boolean {
+        val st = state(context)
+        if (st.restorable <= 0) return false
+        val day = today()
+        prefs(context).edit().putLong(STREAK_DAY, day - 1).putLong(RESTORE_DAY, day).apply()
+        rev.value = rev.value + 1
+        return true
     }
 
     private const val SIDE = "overlay_side"

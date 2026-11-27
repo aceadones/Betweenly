@@ -34,10 +34,32 @@ internal class StrokeStyle(
 )
 
 internal class StrokePainter(
-    private val canvas: Canvas,
+    private val target: Canvas,
     private val style: StrokeStyle,
     private val seed: Int,
+    /** The bitmap [target] draws into. Lets a see-through stroke preview live without stacking dots. */
+    private val ink: Bitmap? = null,
 ) {
+    /**
+     * Continuous brushes at less than full opacity are drawn at full strength into a
+     * private layer and laid on the page once, so joins and overlaps never darken.
+     */
+    private val grouped = !style.erase && style.opacity < 0.995f && when (style.kind) {
+        BrushKind.Solid, BrushKind.Marker, BrushKind.Highlighter, BrushKind.Watercolor -> true
+        else -> false
+    }
+    private var canvas: Canvas = target
+    private var layer: Bitmap? = null
+    private var base: Bitmap? = null
+    private val dirty = RectF()
+    private var hasDirty = false
+    private val blit = Paint()
+    private val groupAlpha = when (style.kind) {
+        BrushKind.Marker -> 0.62f
+        BrushKind.Highlighter -> 0.34f
+        BrushKind.Watercolor -> 0.22f
+        else -> 1f
+    } * style.opacity.coerceIn(0.05f, 1f)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -79,7 +101,65 @@ internal class StrokePainter(
         }
     }
 
+    private fun openLayer() {
+        if (!grouped || layer != null) return
+        val w = ink?.width ?: target.width
+        val h = ink?.height ?: target.height
+        if (w <= 1 || h <= 1) return
+        try {
+            val l = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            layer = l
+            canvas = Canvas(l)
+            if (ink != null) base = ink.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (_: OutOfMemoryError) {
+            layer = null
+            base = null
+            canvas = target
+        }
+    }
+
+    private fun grow(x: Float, y: Float) {
+        val r = width + 4f
+        if (!hasDirty) {
+            dirty.set(x - r, y - r, x + r, y + r)
+            hasDirty = true
+        } else {
+            dirty.union(x - r, y - r)
+            dirty.union(x + r, y + r)
+        }
+    }
+
+    /** Lays the layer over the saved page. Only the touched box is redrawn. */
+    private fun present(final: Boolean) {
+        val l = layer ?: return
+        if (!hasDirty) return
+        val box = android.graphics.Rect(
+            dirty.left.toInt().coerceAtLeast(0),
+            dirty.top.toInt().coerceAtLeast(0),
+            (dirty.right.toInt() + 1).coerceAtMost(l.width),
+            (dirty.bottom.toInt() + 1).coerceAtMost(l.height),
+        )
+        if (box.isEmpty) return
+        val b = base
+        if (b != null) {
+            blit.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+            blit.alpha = 255
+            target.drawBitmap(b, box, box, blit)
+        }
+        blit.xfermode = null
+        blit.alpha = (groupAlpha * 255f).toInt().coerceIn(1, 255)
+        target.drawBitmap(l, box, box, blit)
+        if (final) {
+            l.recycle()
+            layer = null
+            base?.recycle()
+            base = null
+            canvas = target
+        }
+    }
+
     fun start(x: Float, y: Float) {
+        openLayer()
         started = true
         lastX = x
         lastY = y
@@ -88,6 +168,10 @@ internal class StrokePainter(
         carry = 0f
         seg = 0
         stamp(x, y)
+        if (grouped && layer != null) {
+            grow(x, y)
+            if (ink != null) present(false)
+        }
     }
 
     fun extend(x: Float, y: Float) {
@@ -99,6 +183,11 @@ internal class StrokePainter(
         val ny = (lastY + y) * 0.5f
         seg++
         drawSegment(midX, midY, lastX, lastY, nx, ny, line = false, seg = seg)
+        if (grouped && layer != null) {
+            grow(lastX, lastY)
+            grow(nx, ny)
+            if (ink != null) present(false)
+        }
         midX = nx
         midY = ny
         lastX = x
@@ -109,6 +198,10 @@ internal class StrokePainter(
         if (!started) return
         seg++
         drawSegment(midX, midY, lastX, lastY, lastX, lastY, line = true, seg = seg)
+        if (grouped && layer != null) {
+            grow(lastX, lastY)
+            present(true)
+        }
     }
 
     private fun drawSegment(
@@ -289,7 +382,7 @@ internal class StrokePainter(
             style.kind == BrushKind.Watercolor -> 0.22f
             else -> 1f
         }
-        paint.alpha = (fade * scale * 255f).toInt().coerceIn(1, 255)
+        paint.alpha = if (layer != null) 255 else (fade * scale * 255f).toInt().coerceIn(1, 255)
     }
 
     private fun spacing(): Float {

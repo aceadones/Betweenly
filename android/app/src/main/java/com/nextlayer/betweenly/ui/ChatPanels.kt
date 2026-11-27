@@ -94,13 +94,14 @@ fun ChatAttachPreview(
     onRetake: (() -> Unit)?,
     onSend: () -> Unit,
     onClose: () -> Unit,
+    onEdit: ((ChatDraft) -> Unit)? = null,
 ) {
     val item = items.getOrNull(selected) ?: items.lastOrNull()
     BackHandler(onBack = onClose)
     Column(
         Modifier
             .fillMaxSize()
-            .background(Color(0xF010090C))
+            .background(Color(0xFF10090C))
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,6 +109,11 @@ fun ChatAttachPreview(
             Spacer(Modifier.weight(1f))
             if (onRetake != null) {
                 GlassIconButton(onRetake, Lu.RefreshCw, stringResource(R.string.chat_preview_retake), solid = true)
+            }
+            if (onEdit != null && item != null && !item.video && !item.asFile &&
+                item.mime.startsWith("image/") && item.mime != "image/gif" && item.kind != "sticker" && item.kind != "gif"
+            ) {
+                GlassIconButton({ onEdit(item) }, Lu.Pencil, stringResource(R.string.photo_edit), solid = true)
             }
             GlassIconButton(onRemove, Lu.Trash2, stringResource(R.string.chat_preview_remove), solid = true)
         }
@@ -512,7 +518,7 @@ private fun draftBitmap(context: android.content.Context, draft: ChatDraft): Bit
     }
 }
 
-private fun sampleUri(context: android.content.Context, uri: Uri, maxEdge: Int): Bitmap? {
+internal fun sampleUri(context: android.content.Context, uri: Uri, maxEdge: Int): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -100,6 +101,10 @@ fun PetScreen(onBack: () -> Unit) {
             val skin = remember(rev) { PetStore.skin(context) }
             val scope = rememberCoroutineScope()
             Box(Modifier.fillMaxWidth().padding(horizontal = 60.dp)) {
+                StreakBadge(
+                    state.streak,
+                    Modifier.align(Alignment.TopEnd).padding(top = 4.dp),
+                )
                 key(skin) {
                     Pet(
                         res = if (skin == 0) R.drawable.pet_bunny else R.drawable.pet_kitten,
@@ -170,6 +175,7 @@ fun PetScreen(onBack: () -> Unit) {
 
 @Composable
 private fun StreakCard(state: PetStore.State, partner: String) {
+    val context = LocalContext.current
     val shape = RoundedCornerShape(LdRadius.card)
     val name = partner.ifBlank { stringResource(R.string.partner_default) }
     val line = when {
@@ -188,6 +194,22 @@ private fun StreakCard(state: PetStore.State, partner: String) {
     ) {
         Flame(lit = state.streak > 0, modifier = Modifier.size(56.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (state.restorable > 0) {
+                Text(
+                    stringResource(R.string.pet_restore, state.restorable),
+                    modifier = Modifier
+                        .clickable { PetStore.restore(context) }
+                        .ldGlass(RoundedCornerShape(50), strong = true)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                    color = LdColors.primary,
+                )
+                Text(
+                    stringResource(R.string.pet_restore_help),
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = LdColors.onGlassMuted,
+                )
+            }
             Text(
                 if (state.streak == 1) {
                     stringResource(R.string.pet_streak_one)
@@ -425,6 +447,7 @@ private fun Pet(
  */
 @Composable
 fun PetOverlay(onOpen: () -> Unit) {
+    if (PetOverlayGate.hidden) return
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val petRevO by PetStore.changes.collectAsState()
@@ -440,11 +463,17 @@ fun PetOverlay(onOpen: () -> Unit) {
         val ph = with(density) { petH.toPx() }
         val margin = with(density) { 4.dp.toPx() }
         val top = with(density) { 120.dp.toPx() }
-        val bottom = with(density) { 200.dp.toPx() }
+        val imePx = WindowInsets.ime.getBottom(density).toFloat()
+        val bottom = with(density) { 200.dp.toPx() } + imePx
         val (side0, frac0) = remember { PetStore.overlayPos(context) }
         val x = remember { Animatable(if (side0 == 0) margin else wPx - pw - margin) }
         val y = remember {
             Animatable((frac0 * hPx).coerceIn(top, (hPx - bottom - ph).coerceAtLeast(top)))
+        }
+        // Keep the pet above the keyboard and the message bar.
+        LaunchedEffect(imePx) {
+            val limit = (hPx - bottom - ph).coerceAtLeast(top)
+            if (y.value > limit) y.animateTo(limit, tween(200))
         }
         val breathe = if (Motion.enabled) {
             val t = rememberInfiniteTransition(label = "overlayBreathe")
@@ -495,6 +524,41 @@ fun PetOverlay(onOpen: () -> Unit) {
             Canvas(Modifier.fillMaxSize()) {
                 drawImage(image, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
             }
+            val streakNow = PetStore.state(context).streak
+            StreakBadge(
+                streakNow,
+                Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = (-8).dp),
+                small = true,
+            )
         }
     }
+}
+
+/** Flame and the day count, shown on the pet when a streak is alive. Hidden at zero. */
+@Composable
+fun StreakBadge(streak: Int, modifier: Modifier = Modifier, small: Boolean = false) {
+    if (streak <= 0) return
+    Row(
+        modifier
+            .ldGlass(RoundedCornerShape(50))
+            .padding(horizontal = if (small) 5.dp else 8.dp, vertical = if (small) 2.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Flame(lit = true, modifier = Modifier.size(if (small) 16.dp else 24.dp))
+        Text(
+            "$streak",
+            style = if (small) {
+                androidx.compose.material3.MaterialTheme.typography.labelMedium
+            } else {
+                androidx.compose.material3.MaterialTheme.typography.titleMedium
+            },
+            color = LdColors.onGlass,
+        )
+    }
+}
+
+/** Lets a full-screen sheet (photo preview, editor) hide the floating pet while it is open. */
+object PetOverlayGate {
+    var hidden by mutableStateOf(false)
 }

@@ -639,4 +639,16 @@
     <string name="pet_none_today">Message each other today to keep the streak.</string>
     <string name="pet_name">Your shared pet</string>
     <string name="pet_choose">Pick how it looks</string>
+    <string name="pet_channel">Pet streak</string>
+    <string name="pet_reminder_title">1 hour left for your streak</string>
+    <string name="pet_reminder_text">Message each other before midnight to keep your %d day streak.</string>
+    <string name="pet_restore">Restore my %d day streak</string>
+    <string name="pet_restore_help">Brings it back once a week, and it continues when you both message today.</string>
+    <string name="photo_edit">Edit photo</string>
+    <string name="photo_edit_done">Done</string>
+    <string name="photo_edit_add_text">Add text</string>
+    <string name="photo_edit_rotate">Rotate</string>
+    <string name="photo_edit_reset">Reset</string>
+    <string name="photo_edit_crop">Crop</string>
+    <string name="photo_edit_draw">Draw</string>
 </resources>

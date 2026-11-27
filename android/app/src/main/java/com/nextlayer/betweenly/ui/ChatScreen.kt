@@ -1084,9 +1084,46 @@ private fun ChatBody(
                     onClose = { activitiesOn = false },
                 )
             }
-            if (previewOn && drafts.isNotEmpty()) {
+            var editing by remember { mutableStateOf<ChatDraft?>(null) }
+            var editBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+            LaunchedEffect(editing) {
+                val d = editing
+                editBitmap = if (d == null) null else withContext(Dispatchers.IO) {
+                    try {
+                        when {
+                            d.bytes != null -> ChatMedia.decodeForDisplay(d.bytes, 1600)
+                            d.uri != null -> sampleUri(context, d.uri, 1600)
+                            else -> null
+                        }
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            }
+            androidx.compose.runtime.SideEffect { PetOverlayGate.hidden = previewOn || editing != null }
+            androidx.compose.runtime.DisposableEffect(Unit) { onDispose { PetOverlayGate.hidden = false } }
+            val editSource = editBitmap
+            if (editing != null && editSource != null) {
+                PhotoEditor(
+                    source = editSource,
+                    onDone = { jpeg ->
+                        val d = editing
+                        if (d != null) {
+                            val next = drafts.toMutableList()
+                            val i = next.indexOfFirst { it.key == d.key }
+                            if (i >= 0) {
+                                next[i] = ChatDraft(d.key, null, jpeg, "image/jpeg", "photo.jpg", false, false, d.fromCamera, null)
+                                drafts = next
+                            }
+                        }
+                        editing = null
+                    },
+                    onCancel = { editing = null },
+                )
+            } else if (previewOn && drafts.isNotEmpty()) {
                 val current = drafts.getOrNull(draftIndex)
                 ChatAttachPreview(
+                    onEdit = { item -> editing = item },
                     items = drafts,
                     selected = draftIndex.coerceIn(0, drafts.lastIndex),
                     caption = caption,

@@ -299,7 +299,7 @@ internal class DrawingViewModel : ViewModel() {
         active = pts
         activeStyle = style
         activeSeed = seed
-        activePainter = StrokePainter(Canvas(ink), style, seed)
+        activePainter = StrokePainter(Canvas(ink), style, seed, ink)
         activePainter?.start(nx * side, ny * side)
         drawing = true
         if (eraser) cursor = DrawPt(nx, ny)

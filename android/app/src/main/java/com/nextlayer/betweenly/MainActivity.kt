@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PetReminder.schedule(this)
         applySystemBars()
         if (Store.isPaired(this)) UiFlags.setOnboardingDone(this)
         ChatStore.loadUnread(this)
