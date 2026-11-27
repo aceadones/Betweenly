@@ -13,6 +13,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.key
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -118,7 +119,7 @@ fun PetScreen(onBack: () -> Unit) {
                             listOf(Offset(0.325f, 0.327f), Offset(0.689f, 0.328f))
                         },
                         eyeRadius = 0.085f,
-                        label = stringResource(R.string.pet_name),
+                        label = look.name.ifBlank { stringResource(R.string.pet_name) },
                         phase = 0f,
                         look = look,
                     )
@@ -164,6 +165,54 @@ fun PetScreen(onBack: () -> Unit) {
                         )
                     }
                 }
+            }
+            var renaming by remember { mutableStateOf(false) }
+            var draftName by remember { mutableStateOf("") }
+            Text(
+                stringResource(R.string.pet_rename),
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .clip(RoundedCornerShape(50))
+                    .clickable { draftName = look.name; renaming = true }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+                color = LdColors.primary,
+            )
+            if (renaming) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { renaming = false },
+                    title = { Text(stringResource(R.string.pet_rename_title)) },
+                    text = {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = draftName,
+                            onValueChange = { draftName = it.take(20) },
+                            singleLine = true,
+                            textStyle = androidx.compose.material3.MaterialTheme.typography.titleLarge.copy(
+                                color = LdColors.colors.ink,
+                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(LdColors.primary),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    },
+                    confirmButton = {
+                        Text(
+                            stringResource(R.string.photo_edit_done),
+                            modifier = Modifier
+                                .clickable {
+                                    renaming = false
+                                    val ts = PetStore.rename(context, draftName)
+                                    if (ts > 0L) {
+                                        scope.launch {
+                                            // DATA-FLOW: the pet's name and look, encrypted, to the partner via the relay.
+                                            com.nextlayer.betweenly.Outbox.send(context, PetStore.message(context, ts))
+                                        }
+                                    }
+                                }
+                                .padding(12.dp),
+                            color = LdColors.primary,
+                        )
+                    },
+                )
             }
             Wardrobe(look) { item ->
                 val ts = PetStore.toggleItem(context, item.slot, item.id)
@@ -234,6 +283,11 @@ private fun StreakCard(state: PetStore.State, partner: String) {
             Text(
                 line,
                 style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                color = LdColors.onGlassMuted,
+            )
+            Text(
+                stringResource(R.string.pet_day_note),
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                 color = LdColors.onGlassMuted,
             )
         }

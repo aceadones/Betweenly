@@ -79,10 +79,11 @@ object Msg {
         .put("rid", rid)
 
     /** The shared pet's look. DATA-FLOW: one small number, encrypted, to the partner. */
-    fun pet(skin: Int, outfit: String, ts: Long): JSONObject = JSONObject()
+    fun pet(skin: Int, outfit: String, name: String, ts: Long): JSONObject = JSONObject()
         .put("t", "pet")
         .put("skin", skin)
         .put("o", outfit)
+        .put("n", name)
         .put("ts", ts)
 
     /** One short notice. No body. */
@@ -301,7 +302,7 @@ object Inbox {
                 "ringack" -> RingController.onPartnerAck(context, json.optString("rid"))
                 "profile" -> applyProfile(context, json)
                 "typing" -> Typing.onIncoming(json)
-                "pet" -> PetStore.applyRemote(context, json.optInt("skin", 0), json.optString("o", ""), json.optLong("ts", 0L))
+                "pet" -> PetStore.applyRemote(context, json.optInt("skin", 0), json.optString("o", ""), json.optString("n", ""), json.optLong("ts", 0L))
                 "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
                 "dlv", "seen" -> ChatInbound.handle(context, json)
                 "unsend", "wall" -> ChatInbound.handle(context, json)

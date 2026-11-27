@@ -641,7 +641,7 @@
     <string name="pet_choose">Pick how it looks</string>
     <string name="pet_channel">Pet streak</string>
     <string name="pet_reminder_title">1 hour left for your streak</string>
-    <string name="pet_reminder_text">Message each other before midnight to keep your %d day streak.</string>
+    <string name="pet_reminder_text">Message each other before 9:30 pm IST to keep your %d day streak.</string>
     <string name="pet_restore">Restore my %d day streak</string>
     <string name="pet_restore_help">Brings it back once a week, and it continues when you both message today.</string>
     <string name="photo_edit">Edit photo</string>
@@ -661,4 +661,15 @@
     <string name="acc_bowtie">Bow tie</string>
     <string name="acc_scarf">Scarf</string>
     <string name="acc_guitar">Guitar</string>
+    <string name="notif_check_title">If message notices do not show</string>
+    <string name="notif_check_allowed">Notifications are allowed for this app</string>
+    <string name="notif_check_channel">The Messages channel is not silenced</string>
+    <string name="notif_check_battery">Battery use is unrestricted (needed for notices when the app is closed)</string>
+    <string name="notif_check_push">This phone is registered for wake-ups</string>
+    <string name="notif_check_test">Send a test notice</string>
+    <string name="notif_check_test_text">This is a test notice.</string>
+    <string name="notif_check_battery_fix">Allow background use</string>
+    <string name="pet_rename">Name your pet</string>
+    <string name="pet_rename_title">Name your shared pet</string>
+    <string name="pet_day_note">Each day ends at 9:30 pm IST for both of you.</string>
 </resources>

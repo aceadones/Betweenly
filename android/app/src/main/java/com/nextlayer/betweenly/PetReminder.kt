@@ -11,11 +11,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
- * One local reminder a day at 23:00: if there is a streak and you have not both
+ * One local reminder a day at 8:30 pm IST (the streak day ends at 9:30 pm IST): if there is a streak and you have not both
  * messaged yet, there is one hour left. The alarm is inexact and does not wake
  * the phone more than once a day.
  *
@@ -30,10 +29,12 @@ object PetReminder {
         val app = context.applicationContext
         try {
             val am = app.getSystemService(AlarmManager::class.java) ?: return
-            val now = LocalDateTime.now()
-            var at = now.withHour(23).withMinute(0).withSecond(0).withNano(0)
+            // One hour before the streak day ends: 8:30 pm Indian Standard Time, for both phones.
+            val ist = ZoneId.of("Asia/Kolkata")
+            val now = java.time.ZonedDateTime.now(ist)
+            var at = now.withHour(20).withMinute(30).withSecond(0).withNano(0)
             if (!at.isAfter(now)) at = at.plusDays(1)
-            val millis = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            val millis = at.toInstant().toEpochMilli()
             val pi = PendingIntent.getBroadcast(
                 app,
                 7001,

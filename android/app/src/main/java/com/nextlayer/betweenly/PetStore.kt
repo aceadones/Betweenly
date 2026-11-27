@@ -1,7 +1,6 @@
 package com.nextlayer.betweenly
 
 import android.content.Context
-import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -33,10 +32,21 @@ object PetStore {
         val restorable: Int = 0,
     )
 
-    private fun prefs(context: Context) =
-        context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+    private fun prefs(context: Context): android.content.SharedPreferences {
+        val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        if (p.getInt("day_ver", 0) < 2) {
+            // Older builds counted days on the phone's own clock. Start fresh on the shared IST day.
+            p.edit().remove(MINE).remove(THEIRS).putInt("day_ver", 2).apply()
+        }
+        return p
+    }
 
-    private fun today(): Long = LocalDate.now().toEpochDay()
+    /**
+     * The streak day. Everyone uses Indian Standard Time and a day ends at 9:30 pm IST, so
+     * both phones agree on the day wherever they are. 19_800_000 ms is IST (+5:30); the extra
+     * 9_000_000 ms (2:30) moves the day boundary from midnight to 21:30.
+     */
+    private fun today(): Long = Math.floorDiv(System.currentTimeMillis() + 19_800_000L + 9_000_000L, 86_400_000L)
 
     /** Call once per stored chat message. [mine] is true for messages this phone sent. */
     fun record(context: Context, mine: Boolean) {
@@ -113,9 +123,10 @@ object PetStore {
     private const val SKIN = "skin"
     private const val SKIN_TS = "skin_ts"
     private const val OUTFIT = "outfit"
+    private const val PET_NAME = "pet_name"
 
     /** The shared pet's look: skin 0 bunny / 1 kitten, and one accessory id (or -1) per slot. */
-    data class Look(val skin: Int, val outfit: List<Int>)
+    data class Look(val skin: Int, val outfit: List<Int>, val name: String = "")
 
     private fun parseOutfit(text: String?): List<Int> {
         val parts = (text ?: "").split(",").map { it.trim().toIntOrNull() ?: -1 }
@@ -124,7 +135,11 @@ object PetStore {
 
     fun look(context: Context): Look {
         val p = prefs(context)
-        return Look(p.getInt(SKIN, 0).coerceIn(0, 1), parseOutfit(p.getString(OUTFIT, "")))
+        return Look(
+            p.getInt(SKIN, 0).coerceIn(0, 1),
+            parseOutfit(p.getString(OUTFIT, "")),
+            p.getString(PET_NAME, "") ?: "",
+        )
     }
 
     fun skin(context: Context): Int = look(context).skin
@@ -135,6 +150,7 @@ object PetStore {
         prefs(context).edit()
             .putInt(SKIN, look.skin)
             .putString(OUTFIT, look.outfit.joinToString(","))
+            .putString(PET_NAME, look.name)
             .putLong(SKIN_TS, ts)
             .apply()
         rev.value = rev.value + 1
@@ -156,13 +172,22 @@ object PetStore {
         return save(context, cur.copy(outfit = next))
     }
 
+    /** Names the shared pet. Returns the timestamp to send. */
+    fun rename(context: Context, name: String): Long {
+        val cur = look(context)
+        val clean = name.trim().filter { it >= ' ' }.take(20)
+        if (clean == cur.name) return -1L
+        return save(context, cur.copy(name = clean))
+    }
+
     /** The partner's look, applied when it is newer than mine. */
-    fun applyRemote(context: Context, skin: Int, outfit: String?, ts: Long) {
+    fun applyRemote(context: Context, skin: Int, outfit: String?, name: String?, ts: Long) {
         val p = prefs(context)
         if (ts <= p.getLong(SKIN_TS, 0L)) return
         p.edit()
             .putInt(SKIN, skin.coerceIn(0, 1))
             .putString(OUTFIT, parseOutfit(outfit).joinToString(","))
+            .putString(PET_NAME, (name ?: "").trim().take(20))
             .putLong(SKIN_TS, ts)
             .apply()
         rev.value = rev.value + 1
@@ -171,7 +196,7 @@ object PetStore {
     /** The current look as the encrypted partner message. */
     fun message(context: Context, ts: Long): org.json.JSONObject {
         val l = look(context)
-        return Msg.pet(l.skin, l.outfit.joinToString(","), ts)
+        return Msg.pet(l.skin, l.outfit.joinToString(","), l.name, ts)
     }
 
     /** Clears the pet when the pair is removed. */

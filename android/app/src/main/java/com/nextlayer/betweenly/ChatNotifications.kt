@@ -54,7 +54,8 @@ object ChatNotifications {
             copy = copy,
             open = "chat",
             requestCode = 30,
-            alertEveryTime = false,
+            // Every new message should buzz or sound, not only the first one.
+            alertEveryTime = true,
         )
     }
 
@@ -136,6 +137,21 @@ object ChatNotifications {
             alertEveryTime = false,
             target = DuetBridge.viewIntent(app),
             actionLabel = label,
+        )
+    }
+
+    /** A test notice from Profile, so the person can check that notices reach this phone. DATA-FLOW: none. */
+    fun onTest(context: Context) {
+        post(
+            context = context,
+            channelId = CHANNEL,
+            channelName = R.string.channel_messages,
+            channelDesc = R.string.notif_channel_messages_desc,
+            notificationId = 1099,
+            copy = NotifCopy(context.getString(R.string.app_name), context.getString(R.string.notif_check_test_text)),
+            open = null,
+            requestCode = 34,
+            alertEveryTime = true,
         )
     }
 

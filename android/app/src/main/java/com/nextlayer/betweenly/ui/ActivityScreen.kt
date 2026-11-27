@@ -167,7 +167,7 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}) {
                                 DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
                             }
                             HubCard.Pet -> HubTile(
-                                title = stringResource(R.string.pet_title),
+                                title = com.nextlayer.betweenly.PetStore.look(context).name.ifBlank { stringResource(R.string.pet_title) },
                                 subtitle = if (petState.streak > 0) {
                                     stringResource(R.string.pet_streak_n, petState.streak)
                                 } else {

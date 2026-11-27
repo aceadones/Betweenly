@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import com.nextlayer.betweenly.NotifEvent
 import com.nextlayer.betweenly.NotifMode
 import com.nextlayer.betweenly.R
+import com.nextlayer.betweenly.ChatNotifications
 import com.nextlayer.betweenly.Store
 import com.nextlayer.betweenly.clipNotifDraft
 import com.nextlayer.betweenly.notificationText
@@ -217,7 +218,76 @@ fun NotificationSettings(snackbar: SnackbarHostState, modifier: Modifier = Modif
             },
             modifier = Modifier.fillMaxWidth(),
         )
+        DeliveryCheck()
     }
+}
+
+/**
+ * Why might a message notice not show? Four checks on this phone, a test notice,
+ * and a shortcut to the battery setting. Nothing leaves the phone.
+ */
+@Composable
+private fun DeliveryCheck() {
+    val context = LocalContext.current
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    var tick by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    androidx.compose.runtime.DisposableEffect(lifecycle) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    val checks = remember(tick) {
+        val nm = context.getSystemService(android.app.NotificationManager::class.java)
+        val pm = context.getSystemService(android.os.PowerManager::class.java)
+        val channel = nm?.getNotificationChannel("messages")
+        listOf(
+            R.string.notif_check_allowed to (nm?.areNotificationsEnabled() == true),
+            R.string.notif_check_channel to (channel == null || channel.importance >= android.app.NotificationManager.IMPORTANCE_DEFAULT),
+            R.string.notif_check_battery to (pm?.isIgnoringBatteryOptimizations(context.packageName) == true),
+            R.string.notif_check_push to (Store.fcmToken(context).length in 20..400),
+        )
+    }
+    Text(
+        stringResource(R.string.notif_check_title),
+        modifier = Modifier.padding(top = 12.dp),
+        style = MaterialTheme.typography.bodyLarge,
+        color = surfaceInk(),
+    )
+    for ((label, ok) in checks) {
+        Text(
+            (if (ok) "\u2713  " else "\u2717  ") + stringResource(label),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (ok) androidx.compose.ui.graphics.Color(0xFF1E8E4E) else LdColors.primary,
+        )
+    }
+    SecondaryPill(
+        text = stringResource(R.string.notif_check_test),
+        onClick = { ChatNotifications.onTest(context) },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    SecondaryPill(
+        text = stringResource(R.string.notif_check_battery_fix),
+        onClick = {
+            try {
+                context.startActivity(
+                    android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:" + context.packageName))
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            } catch (_: Exception) {
+                try {
+                    context.startActivity(
+                        android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                } catch (_: Exception) {
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
