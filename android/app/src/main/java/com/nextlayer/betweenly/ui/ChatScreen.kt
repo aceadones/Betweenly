@@ -289,7 +289,7 @@ private fun ChatBody(
     }
     LaunchedEffect(chatRev) {
         val loaded = withContext(Dispatchers.IO) { ChatStore.list(context) }
-        messages = loaded.filter { it.json.optInt("fr") != 1 && it.json.optString("t") != "fcom" }
+        messages = loaded.filter { it.json.optInt("fr") != 1 && it.json.optString("t") != "fcom" && it.json.optString("t") != "sd" }
         ready = withContext(Dispatchers.IO) {
             loaded.mapNotNull { message ->
                 if (ChatStore.hasAttachment(context, message.id)) message.id else null

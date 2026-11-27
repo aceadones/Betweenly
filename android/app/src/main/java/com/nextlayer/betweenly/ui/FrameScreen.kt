@@ -125,11 +125,13 @@ fun FrameScreen(onBack: () -> Unit) {
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(posts, key = { it.id }) { post ->
-                            PostCard(
-                                post,
-                                comments.count { it.json.optString("p") == post.id },
-                                onOpen = { openId = post.id },
-                            )
+                            Box(Modifier.animateItem()) {
+                                PostCard(
+                                    post,
+                                    comments.count { it.json.optString("p") == post.id },
+                                    onOpen = { openId = post.id },
+                                )
+                            }
                         }
                     }
                 }

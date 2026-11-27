@@ -75,7 +75,7 @@ import kotlinx.coroutines.withContext
  * DATA-FLOW: none. A Duet tap is a local intent. Install hands a URL to the browser.
  */
 @Composable
-fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}, onOpenFrame: () -> Unit = {}) {
+fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}, onOpenFrame: () -> Unit = {}, onOpenFeature: (String) -> Unit = {}) {
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -186,6 +186,21 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}, onOpen
                             ) {
                                 FrameMedia()
                             }
+                            HubCard.Todo -> HubTile(stringResource(R.string.todo_title), stringResource(R.string.todo_card_sub), index, { onOpenFeature("Todo") }) {
+                                EmojiMedia("\uD83D\uDCDD", Color(0xFFFFE9C7), Color(0xFFFFB86B))
+                            }
+                            HubCard.Countdown -> HubTile(stringResource(R.string.cd_title), stringResource(R.string.cd_card_sub), index, { onOpenFeature("Countdown") }) {
+                                EmojiMedia("\u23F3", Color(0xFFE3EBFF), Color(0xFF9DB4FF))
+                            }
+                            HubCard.Mood -> HubTile(stringResource(R.string.mood_title), stringResource(R.string.mood_card_sub), index, { onOpenFeature("Mood") }) {
+                                EmojiMedia("\uD83D\uDE0A", Color(0xFFFFF3C4), Color(0xFFFFCF5C))
+                            }
+                            HubCard.Game -> HubTile(stringResource(R.string.xo_title), stringResource(R.string.xo_card_sub), index, { onOpenFeature("Game") }) {
+                                EmojiMedia("\u274C\u2B55", Color(0xFFE5F7EA), Color(0xFF8FD6A4))
+                            }
+                            HubCard.Letters -> HubTile(stringResource(R.string.letters_title), stringResource(R.string.letters_card_sub), index, { onOpenFeature("Letters") }) {
+                                EmojiMedia("\uD83D\uDC8C", Color(0xFFFFE3E7), Color(0xFFFF9FB0))
+                            }
                             HubCard.Duet -> HubTile(
                                 title = stringResource(R.string.duet_title),
                                 subtitle = if (!duetInstalled) {
@@ -207,6 +222,16 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}, onOpen
             }
             }
         }
+    }
+}
+
+@Composable
+private fun EmojiMedia(emoji: String, top: Color, bottom: Color) {
+    Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(top, bottom))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(emoji, style = androidx.compose.material3.MaterialTheme.typography.displayMedium)
     }
 }
 
@@ -265,7 +290,7 @@ private fun PetMedia(streak: Int, skinRev: Int = 0) {
     }
 }
 
-private enum class HubCard { Draw, Pet, Frame, Duet }
+private enum class HubCard { Draw, Pet, Frame, Todo, Countdown, Mood, Game, Letters, Duet }
 
 @Composable
 private fun duetChip(installed: Boolean, now: DuetState.Now?): String {

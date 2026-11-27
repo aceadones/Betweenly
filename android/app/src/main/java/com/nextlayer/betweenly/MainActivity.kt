@@ -148,6 +148,11 @@ private enum class Screen {
     SavedDrawings,
     Pet,
     Frame,
+    Countdown,
+    Todo,
+    Mood,
+    Game,
+    Letters,
 }
 
 private enum class Tab { Activity, Chat, Location, Profile }
@@ -255,6 +260,11 @@ private fun Root(startOpen: String?) {
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
             Screen.Pet -> com.nextlayer.betweenly.ui.PetScreen(onBack = { screenName = Screen.Main.name })
             Screen.Frame -> com.nextlayer.betweenly.ui.FrameScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Countdown -> com.nextlayer.betweenly.ui.CountdownScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Todo -> com.nextlayer.betweenly.ui.TodoScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Mood -> com.nextlayer.betweenly.ui.MoodScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Game -> com.nextlayer.betweenly.ui.GameScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Letters -> com.nextlayer.betweenly.ui.LettersScreen(onBack = { screenName = Screen.Main.name })
             Screen.SavedDrawings -> com.nextlayer.betweenly.ui.SavedDrawingsScreen(
                 onBack = { screenName = Screen.Main.name },
             )
@@ -266,6 +276,7 @@ private fun Root(startOpen: String?) {
                 onOpenDrawing = { screenName = Screen.Drawing.name },
                 onOpenPet = { screenName = Screen.Pet.name },
                 onOpenFrame = { screenName = Screen.Frame.name },
+                onOpenFeature = { screenName = it },
                 onSavedDrawings = { screenName = Screen.SavedDrawings.name },
                 onPrivacy = {
                     privacyFrom = Screen.Main.name
@@ -302,6 +313,7 @@ private fun MainShell(
     onOpenDrawing: () -> Unit,
     onOpenPet: () -> Unit,
     onOpenFrame: () -> Unit,
+    onOpenFeature: (String) -> Unit,
     onSavedDrawings: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
@@ -364,6 +376,7 @@ private fun MainShell(
                         onOpenDrawing = onOpenDrawing,
                         onOpenPet = onOpenPet,
                         onOpenFrame = onOpenFrame,
+                        onOpenFeature = onOpenFeature,
                     )
                     Tab.Chat -> ChatScreen(
                         onBack = { onTab(Tab.Activity) },
@@ -489,7 +502,7 @@ private fun screenForward(from: Screen, to: Screen): Boolean {
         Screen.Onboarding -> 0
         Screen.Pair -> 1
         Screen.Main -> 2
-        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings, Screen.Pet, Screen.Frame -> 3
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings, Screen.Pet, Screen.Frame, Screen.Countdown, Screen.Todo, Screen.Mood, Screen.Game, Screen.Letters -> 3
     }
     return depth(to) >= depth(from)
 }
