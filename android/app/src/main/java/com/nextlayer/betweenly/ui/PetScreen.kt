@@ -11,6 +11,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.key
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.imageResource
@@ -98,7 +100,8 @@ fun PetScreen(onBack: () -> Unit) {
         ) {
             ScreenHeader(stringResource(R.string.pet_title), onBack)
             Spacer(Modifier.height(8.dp))
-            val skin = remember(rev) { PetStore.skin(context) }
+            val look = remember(rev) { PetStore.look(context) }
+            val skin = look.skin
             val scope = rememberCoroutineScope()
             Box(Modifier.fillMaxWidth().padding(horizontal = 60.dp)) {
                 StreakBadge(
@@ -107,7 +110,8 @@ fun PetScreen(onBack: () -> Unit) {
                 )
                 key(skin) {
                     Pet(
-                        res = if (skin == 0) R.drawable.pet_bunny else R.drawable.pet_kitten,
+                        sad = petIsSad(state),
+                        res = petRes(skin, petIsSad(state)),
                         eyes = if (skin == 0) {
                             listOf(Offset(0.339f, 0.434f), Offset(0.690f, 0.434f))
                         } else {
@@ -116,6 +120,7 @@ fun PetScreen(onBack: () -> Unit) {
                         eyeRadius = 0.085f,
                         label = stringResource(R.string.pet_name),
                         phase = 0f,
+                        look = look,
                     )
                 }
             }
@@ -146,7 +151,7 @@ fun PetScreen(onBack: () -> Unit) {
                                 if (ts > 0L) {
                                     scope.launch {
                                         // DATA-FLOW: the chosen look, encrypted, to the partner via the relay.
-                                        com.nextlayer.betweenly.Outbox.send(context, com.nextlayer.betweenly.Msg.pet(i, ts))
+                                        com.nextlayer.betweenly.Outbox.send(context, PetStore.message(context, ts))
                                     }
                                 }
                             }
@@ -160,7 +165,14 @@ fun PetScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Wardrobe(look) { item ->
+                val ts = PetStore.toggleItem(context, item.slot, item.id)
+                scope.launch {
+                    // DATA-FLOW: the chosen look, encrypted, to the partner via the relay.
+                    com.nextlayer.betweenly.Outbox.send(context, PetStore.message(context, ts))
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             StreakCard(state, partner)
             Text(
                 stringResource(R.string.pet_hint),
@@ -309,13 +321,16 @@ fun Flame(lit: Boolean, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun Pet(
+    sad: Boolean,
     res: Int,
     eyes: List<Offset>,
     eyeRadius: Float,
     label: String,
     phase: Float,
+    look: PetStore.Look,
 ) {
     val image = ImageBitmap.imageResource(res)
+    val worn = wornItems(look)
     val scope = rememberCoroutineScope()
     val aspect = image.height.toFloat() / image.width.toFloat()
     val breathe = if (Motion.enabled) {
@@ -327,6 +342,18 @@ private fun Pet(
             label = "breatheValue",
         )
         ((v + phase) % 1f).let { x -> if (x < 0.5f) x * 2f else (1f - x) * 2f }
+    } else {
+        0f
+    }
+    val shiver = if (sad && Motion.enabled) {
+        val t = rememberInfiniteTransition(label = "shiver")
+        val v by t.animateFloat(
+            initialValue = -1f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(90), RepeatMode.Reverse),
+            label = "shiverValue",
+        )
+        v
     } else {
         0f
     }
@@ -344,8 +371,8 @@ private fun Pet(
         scope.launch { hop.animateTo(1f, spring(0.45f, Spring.StiffnessMedium)); hop.animateTo(0f, spring(0.5f, Spring.StiffnessLow)) }
         for (a in listOf(9f, -9f, 7f, -7f, 0f)) tilt.animateTo(a, tween(110))
     }
-    LaunchedEffect(Motion.enabled) {
-        if (!Motion.enabled) return@LaunchedEffect
+    LaunchedEffect(Motion.enabled, sad) {
+        if (!Motion.enabled || sad) return@LaunchedEffect
         var n = 0
         while (true) {
             delay(Random.nextLong(2400, 4800))
@@ -377,6 +404,7 @@ private fun Pet(
                         val b = 0.025f * breathe
                         scaleX = 1f - b * 0.5f
                         scaleY = 1f + b
+                        translationX = shiver * 2.dp.toPx()
                         translationY = -hop.value * 26.dp.toPx()
                         rotationZ = tilt.value
                         transformOrigin = TransformOrigin(0.5f, 1f)
@@ -394,6 +422,7 @@ private fun Pet(
                     dstOffset = IntOffset(left.toInt(), 0),
                     dstSize = IntSize(iw.toInt(), ih.toInt()),
                 )
+                if (!sad) drawOutfit(worn, look.skin, left, iw, ih)
                 if (blink > 0f) {
                     eyes.forEachIndexed { i, e ->
                         val cx = left + e.x * iw
@@ -452,7 +481,9 @@ fun PetOverlay(onOpen: () -> Unit) {
     val scope = rememberCoroutineScope()
     val petRevO by PetStore.changes.collectAsState()
     val skinO = remember(petRevO) { PetStore.skin(context) }
-    val image = ImageBitmap.imageResource(if (skinO == 0) R.drawable.pet_bunny else R.drawable.pet_kitten)
+    val sadO = petIsSad(PetStore.state(context))
+    val image = ImageBitmap.imageResource(petRes(skinO, sadO))
+    val wornO = wornItems(PetStore.look(context))
     val density = androidx.compose.ui.platform.LocalDensity.current
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
         val petW = 64.dp
@@ -523,6 +554,7 @@ fun PetOverlay(onOpen: () -> Unit) {
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 drawImage(image, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
+                if (!sadO) drawOutfit(wornO, skinO, 0f, size.width, size.height)
             }
             val streakNow = PetStore.state(context).streak
             StreakBadge(
@@ -561,4 +593,120 @@ fun StreakBadge(streak: Int, modifier: Modifier = Modifier, small: Boolean = fal
 /** Lets a full-screen sheet (photo preview, editor) hide the floating pet while it is open. */
 object PetOverlayGate {
     var hidden by mutableStateOf(false)
+}
+
+/** The drawable for the pet's look. Sad and frosty until both of you have messaged today. */
+fun petRes(skin: Int, sad: Boolean): Int = when {
+    skin == 0 && sad -> R.drawable.pet_bunny_sad
+    skin == 0 -> R.drawable.pet_bunny
+    sad -> R.drawable.pet_kitten_sad
+    else -> R.drawable.pet_kitten
+}
+
+/** True when the pet should look cold and sad: not both of you have messaged today. */
+fun petIsSad(state: PetStore.State): Boolean = !(state.mineToday && state.theirsToday)
+
+/** One wearable. [slot] 0 head, 1 face, 2 neck, 3 hand. */
+class PetItem(val id: Int, val slot: Int, val res: Int, val label: Int)
+
+val petItems = listOf(
+    PetItem(0, 0, R.drawable.acc_party, R.string.acc_party),
+    PetItem(1, 0, R.drawable.acc_crown, R.string.acc_crown),
+    PetItem(2, 0, R.drawable.acc_tophat, R.string.acc_tophat),
+    PetItem(3, 0, R.drawable.acc_cap, R.string.acc_cap),
+    PetItem(4, 1, R.drawable.acc_sunglasses, R.string.acc_sunglasses),
+    PetItem(5, 1, R.drawable.acc_heartglasses, R.string.acc_heartglasses),
+    PetItem(6, 2, R.drawable.acc_bowtie, R.string.acc_bowtie),
+    PetItem(7, 2, R.drawable.acc_scarf, R.string.acc_scarf),
+    PetItem(8, 3, R.drawable.acc_guitar, R.string.acc_guitar),
+)
+
+/** Where one accessory sits on a pet, as fractions of the pet picture. Head items anchor at their bottom edge. */
+private class Spot(val cx: Float, val cy: Float, val width: Float, val rotate: Float = 0f)
+
+private fun spotFor(item: PetItem, skin: Int): Spot {
+    val bunny = skin == 0
+    return when (item.id) {
+        0 -> Spot(0.50f, if (bunny) 0.27f else 0.15f, 0.30f)
+        1 -> Spot(0.50f, if (bunny) 0.27f else 0.15f, 0.36f)
+        2 -> Spot(0.50f, if (bunny) 0.27f else 0.15f, 0.40f)
+        3 -> Spot(0.52f, if (bunny) 0.30f else 0.18f, 0.46f)
+        4, 5 -> Spot(0.515f, if (bunny) 0.434f else 0.327f, 0.58f)
+        6 -> Spot(0.50f, if (bunny) 0.64f else 0.61f, 0.26f)
+        7 -> Spot(0.50f, if (bunny) 0.66f else 0.63f, 0.52f)
+        else -> Spot(0.74f, if (bunny) 0.78f else 0.72f, 0.52f, -18f)
+    }
+}
+
+/** Loads the worn accessories once per look. Order is the slot order, so the scarf sits under the guitar. */
+@Composable
+private fun wornItems(look: PetStore.Look): List<Pair<PetItem, ImageBitmap>> {
+    val out = ArrayList<Pair<PetItem, ImageBitmap>>(4)
+    for (slot in 0..3) {
+        val id = look.outfit.getOrNull(slot) ?: -1
+        val item = petItems.firstOrNull { it.id == id } ?: continue
+        out.add(item to ImageBitmap.imageResource(item.res))
+    }
+    return out
+}
+
+/** Draws the worn accessories on a pet picture of size [iw] x [ih] whose left edge is at [left]. */
+private fun DrawScope.drawOutfit(worn: List<Pair<PetItem, ImageBitmap>>, skin: Int, left: Float, iw: Float, ih: Float) {
+    for ((item, bmp) in worn) {
+        val spot = spotFor(item, skin)
+        val w = spot.width * iw
+        val h = w * bmp.height / bmp.width
+        val cx = left + spot.cx * iw
+        val cy = spot.cy * ih
+        val top = if (item.slot == 0) cy - h else cy - h / 2f
+        rotate(spot.rotate, Offset(cx, cy)) {
+            drawImage(
+                bmp,
+                dstOffset = IntOffset((cx - w / 2f).toInt(), top.toInt()),
+                dstSize = IntSize(w.toInt(), h.toInt()),
+            )
+        }
+    }
+}
+
+/** The wardrobe row. Tap an item to wear it, tap again to take it off. */
+@Composable
+private fun Wardrobe(look: PetStore.Look, onToggle: (PetItem) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            stringResource(R.string.pet_dress),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+            color = LdColors.colors.inkMuted,
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            petItems.forEach { item ->
+                val worn = look.outfit.getOrNull(item.slot) == item.id
+                Box(
+                    Modifier
+                        .size(64.dp)
+                        .ldGlass(RoundedCornerShape(LdRadius.card))
+                        .border(
+                            if (worn) 3.dp else 0.dp,
+                            if (worn) LdColors.primary else Color.Transparent,
+                            RoundedCornerShape(LdRadius.card),
+                        )
+                        .clickable { onToggle(item) }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(item.res),
+                        contentDescription = stringResource(item.label),
+                    )
+                }
+            }
+        }
+    }
 }

@@ -112,25 +112,66 @@ object PetStore {
 
     private const val SKIN = "skin"
     private const val SKIN_TS = "skin_ts"
+    private const val OUTFIT = "outfit"
 
-    /** 0 = bunny, 1 = kitten. One shared pet; the skin is only its look. */
-    fun skin(context: Context): Int = prefs(context).getInt(SKIN, 0).coerceIn(0, 1)
+    /** The shared pet's look: skin 0 bunny / 1 kitten, and one accessory id (or -1) per slot. */
+    data class Look(val skin: Int, val outfit: List<Int>)
 
-    /** Sets the look. Returns the timestamp to send to the partner, or -1 when nothing changed. */
-    fun chooseSkin(context: Context, skin: Int): Long {
-        if (skin == skin(context)) return -1L
+    private fun parseOutfit(text: String?): List<Int> {
+        val parts = (text ?: "").split(",").map { it.trim().toIntOrNull() ?: -1 }
+        return List(4) { i -> parts.getOrNull(i)?.takeIf { it in -1..8 } ?: -1 }
+    }
+
+    fun look(context: Context): Look {
+        val p = prefs(context)
+        return Look(p.getInt(SKIN, 0).coerceIn(0, 1), parseOutfit(p.getString(OUTFIT, "")))
+    }
+
+    fun skin(context: Context): Int = look(context).skin
+
+    /** Saves a new look and returns its timestamp for the partner message. */
+    private fun save(context: Context, look: Look): Long {
         val ts = System.currentTimeMillis()
-        prefs(context).edit().putInt(SKIN, skin.coerceIn(0, 1)).putLong(SKIN_TS, ts).apply()
+        prefs(context).edit()
+            .putInt(SKIN, look.skin)
+            .putString(OUTFIT, look.outfit.joinToString(","))
+            .putLong(SKIN_TS, ts)
+            .apply()
         rev.value = rev.value + 1
         return ts
     }
 
-    /** Applies the partner's choice when it is newer than mine. */
-    fun applyRemoteSkin(context: Context, skin: Int, ts: Long) {
+    /** Picks bunny or kitten. Returns the timestamp to send, or -1 when unchanged. */
+    fun chooseSkin(context: Context, skin: Int): Long {
+        val cur = look(context)
+        if (skin == cur.skin) return -1L
+        return save(context, cur.copy(skin = skin.coerceIn(0, 1)))
+    }
+
+    /** Puts an accessory in its slot, or takes it off when it is already worn. Returns the timestamp to send. */
+    fun toggleItem(context: Context, slot: Int, item: Int): Long {
+        val cur = look(context)
+        val next = cur.outfit.toMutableList()
+        next[slot] = if (next[slot] == item) -1 else item
+        return save(context, cur.copy(outfit = next))
+    }
+
+    /** The partner's look, applied when it is newer than mine. */
+    fun applyRemote(context: Context, skin: Int, outfit: String?, ts: Long) {
         val p = prefs(context)
         if (ts <= p.getLong(SKIN_TS, 0L)) return
-        p.edit().putInt(SKIN, skin.coerceIn(0, 1)).putLong(SKIN_TS, ts).apply()
+        p.edit()
+            .putInt(SKIN, skin.coerceIn(0, 1))
+            .putString(OUTFIT, parseOutfit(outfit).joinToString(","))
+            .putLong(SKIN_TS, ts)
+            .apply()
         rev.value = rev.value + 1
+    }
+
+    /** The current look as the encrypted partner message. */
+    fun message(context: Context, ts: Long): org.json.JSONObject {
+        val l = look(context)
+        return Msg.pet(l.skin, l.outfit.joinToString(","), ts)
     }
 
     /** Clears the pet when the pair is removed. */

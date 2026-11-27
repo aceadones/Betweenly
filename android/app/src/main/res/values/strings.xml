@@ -651,4 +651,14 @@
     <string name="photo_edit_reset">Reset</string>
     <string name="photo_edit_crop">Crop</string>
     <string name="photo_edit_draw">Draw</string>
+    <string name="pet_dress">Dress up</string>
+    <string name="acc_party">Party hat</string>
+    <string name="acc_crown">Crown</string>
+    <string name="acc_tophat">Top hat</string>
+    <string name="acc_cap">Cap</string>
+    <string name="acc_sunglasses">Sunglasses</string>
+    <string name="acc_heartglasses">Heart glasses</string>
+    <string name="acc_bowtie">Bow tie</string>
+    <string name="acc_scarf">Scarf</string>
+    <string name="acc_guitar">Guitar</string>
 </resources>

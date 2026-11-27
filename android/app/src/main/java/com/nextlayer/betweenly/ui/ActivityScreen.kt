@@ -211,7 +211,7 @@ private fun PetMedia(streak: Int, skinRev: Int = 0) {
     ) {
         val skin = com.nextlayer.betweenly.PetStore.skin(androidx.compose.ui.platform.LocalContext.current)
         androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(if (skin == 0) R.drawable.pet_bunny else R.drawable.pet_kitten),
+            painter = androidx.compose.ui.res.painterResource(petRes(skin, petIsSad(com.nextlayer.betweenly.PetStore.state(androidx.compose.ui.platform.LocalContext.current)))),
             contentDescription = null,
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxHeight(0.86f),
         )
