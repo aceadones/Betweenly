@@ -154,6 +154,7 @@ fun DrawingStudioScreen(onClose: () -> Unit) {
     var heldSheet by remember { mutableStateOf<DrawSheet?>(null) }
     var wheel by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
+    var savedOpen by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
     var viewer by remember { mutableStateOf(false) }
     var block by remember { mutableStateOf(false) }
@@ -582,7 +583,7 @@ fun DrawingStudioScreen(onClose: () -> Unit) {
     val canSend = model.canExport && busy == null && !switching
     val canSave = busy == null && !switching && (model.canExport || (shared && partnerBmp != null))
 
-    BackHandler(enabled = !viewer) {
+    BackHandler(enabled = !viewer && !savedOpen) {
         when {
             busy != null -> Unit
             confirm -> {
@@ -823,6 +824,10 @@ fun DrawingStudioScreen(onClose: () -> Unit) {
             ClearMenu(
                 clearEnabled = model.hasLayer(),
                 shared = shared,
+                onSaved = {
+                    menu = false
+                    savedOpen = true
+                },
                 onNewPage = { newPage() },
                 onClear = {
                     menu = false
@@ -910,6 +915,9 @@ fun DrawingStudioScreen(onClose: () -> Unit) {
         }
         if (viewer) {
             PartnerDrawViewer(onClose = { viewer = false })
+        }
+        if (savedOpen) {
+            SavedDrawingsOverlay(onClose = { savedOpen = false })
         }
     }
 }
@@ -1389,6 +1397,7 @@ private fun DimScrim(onClick: () -> Unit) {
 private fun ClearMenu(
     clearEnabled: Boolean,
     shared: Boolean,
+    onSaved: () -> Unit,
     onNewPage: () -> Unit,
     onClear: () -> Unit,
 ) {
@@ -1399,6 +1408,7 @@ private fun ClearMenu(
             .darkGlass(shape)
             .padding(4.dp),
     ) {
+        MenuRow(icon = Lu.Image, label = stringResource(R.string.draw_saved_title), enabled = true, onClick = onSaved)
         if (shared) {
             MenuRow(icon = Lu.Plus, label = stringResource(R.string.draw_new_page), enabled = true, onClick = onNewPage)
         }

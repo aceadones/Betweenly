@@ -42,6 +42,7 @@ class OutgoingDraft(
     val name: String,
     val video: Boolean,
     val asFile: Boolean,
+    val kind: String? = null,
 )
 
 /** A camera photo or video held until the chat preview sends or drops it. */
@@ -204,6 +205,12 @@ object ChatController {
                 val quoted = if (index == 0) reply else null
                 val result = try {
                     when {
+                        draft.bytes != null && (draft.kind == "gif" || draft.kind == "sticker") -> ChatMedia.asAttachment(
+                            draft.bytes,
+                            draft.mime.ifBlank { if (draft.kind == "gif") "image/gif" else "image/png" },
+                            draft.kind,
+                            draft.name.ifBlank { if (draft.kind == "gif") "animation.gif" else "sticker.png" },
+                        )
                         draft.bytes != null && draft.asFile -> ChatMedia.asAttachment(
                             draft.bytes,
                             draft.mime.ifBlank { "application/octet-stream" },
@@ -586,7 +593,7 @@ object ChatController {
     }
 
     private fun putCaption(json: JSONObject, kind: String, caption: String) {
-        if (kind == "sticker" || kind == "gif" || kind == "voice") return
+        if (kind == "sticker" || kind == "voice") return
         val clean = caption.trim().filter { it >= ' ' || it == '\n' }.take(2_000)
         if (clean.isNotEmpty()) json.put("text", clean)
     }

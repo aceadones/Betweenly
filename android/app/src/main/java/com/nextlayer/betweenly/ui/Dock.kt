@@ -118,7 +118,7 @@ fun LdBottomBar(tabs: List<LdTab>) {
                     )
                 }
             }
-            val wash = Color.White
+            val wash = if (LdColors.glassLight) LdColors.primary else Color.White
             val drawn = span.value
             if (drawn.w > 1f) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -162,7 +162,7 @@ private fun RowScope.DockTab(
     weight: Float,
     modifier: Modifier,
 ) {
-    val tint = if (tab.selected) LdColors.navy else LdColors.onGlass
+    val tint = if (tab.selected) (if (LdColors.glassLight) Color.White else LdColors.navy) else LdColors.onGlass
     val interaction = remember(tab.label) { MutableInteractionSource() }
     val spoken = if (tab.badge > 0) {
         stringResource(R.string.tab_unread, tab.label, tab.badge)

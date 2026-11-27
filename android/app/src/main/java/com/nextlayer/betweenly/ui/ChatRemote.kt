@@ -1,5 +1,6 @@
 package com.nextlayer.betweenly.ui
 
+import android.content.Context
 import android.util.LruCache
 import com.nextlayer.betweenly.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -9,199 +10,174 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.UUID
 import javax.net.ssl.HttpsURLConnection
 import kotlin.coroutines.cancellation.CancellationException
 
-/** One Tenor result. Preview is the small GIF. Send is the file we encrypt. */
-class TenorGif(val id: String, val previewUrl: String, val sendUrl: String)
+/** One GIF. [previewUrl] is the grid thumb. [sendUrl] is the file we encrypt. */
+class GifHit(val id: String, val previewUrl: String, val sendUrl: String)
+
+/** One page from a GIF search. [hasNext] is false when the provider says to stop. */
+class GifPage(val hits: List<GifHit>, val hasNext: Boolean)
 
 /**
- * Tenor search and Google's public emoji-kitchen PNGs.
- * Both stay in memory. Nothing here is written to disk.
+ * GIF search. The panel asks for a page. Bytes stay in memory.
+ * Nothing here is written to disk.
  */
-object ChatRemote {
-    private const val TENOR = "https://tenor.googleapis.com/v2/"
-    private const val KITCHEN = "https://www.gstatic.com/android/keyboard/emojikitchen/"
-    private val dates = listOf(
-        "20201001",
-        "20210218",
-        "20210521",
-        "20211115",
-        "20220203",
-        "20220406",
-        "20220815",
-        "20230301",
-        "20230418",
-    )
+interface GifProvider {
+    fun ready(): Boolean
 
+    /** Null when the request failed. An empty page is a real answer. */
+    suspend fun load(context: Context, query: String, page: Int): GifPage?
+
+    suspend fun bytes(url: String, max: Int): ByteArray?
+}
+
+/**
+ * KLIPY GIF search. Tenor's public API shut down on 30 June 2026.
+ * The key comes from [BuildConfig.KLIPY_API_KEY] (`klipy.apiKey` in local.properties).
+ */
+class KlipyProvider : GifProvider {
     private val lock = Any()
-    private val queryCache = object : LinkedHashMap<String, List<TenorGif>>(8, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<TenorGif>>?): Boolean = size > 8
+    private val pages = object : LinkedHashMap<String, GifPage>(12, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, GifPage>?): Boolean = size > 12
     }
     private val bytes = object : LruCache<String, ByteArray>(6 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ByteArray): Int = value.size.coerceAtLeast(1)
     }
-    private val kitchenMiss = LinkedHashSet<String>()
 
-    fun tenorReady(): Boolean = BuildConfig.TENOR_API_KEY.isNotEmpty()
+    override fun ready(): Boolean = BuildConfig.KLIPY_API_KEY.isNotEmpty()
 
-    suspend fun featured(): List<TenorGif> = withContext(Dispatchers.IO) { tenor("featured", "") }
-
-    suspend fun search(raw: String): List<TenorGif> = withContext(Dispatchers.IO) {
-        val query = raw.filter { it >= ' ' }.trim().take(40)
-        if (query.isEmpty()) tenor("featured", "") else tenor("search", query)
+    override suspend fun load(context: Context, query: String, page: Int): GifPage? = withContext(Dispatchers.IO) {
+        val key = BuildConfig.KLIPY_API_KEY
+        if (key.isEmpty() || !key.matches(KEY)) return@withContext GifPage(emptyList(), false)
+        val term = query.filter { it >= ' ' }.trim().take(40)
+        val index = page.coerceAtLeast(1)
+        val cacheKey = "$term#$index"
+        synchronized(lock) { pages[cacheKey] }?.let { return@withContext it }
+        val path = if (term.isEmpty()) "gifs/trending" else "gifs/search"
+        val q = if (term.isEmpty()) "" else "&q=" + URLEncoder.encode(term, "UTF-8")
+        val customer = URLEncoder.encode(customerId(context), "UTF-8")
+        // DATA-FLOW: the search term (empty for trending) and a random per-install customer id
+        // go to api.klipy.com. The id is not the partner, not an account, and not a message.
+        // GIF bytes are downloaded later from KLIPY's CDN. Nothing about the chat is sent.
+        val url = "https://api.klipy.com/api/v1/" + key + "/" + path +
+            "?page=" + index + "&per_page=24&customer_id=" + customer + q
+        val body = httpsBytes(url, 512 * 1024, "application/json") ?: return@withContext null
+        val parsed = parse(body)
+        synchronized(lock) { pages[cacheKey] = parsed }
+        parsed
     }
 
     /**
-     * DATA-FLOW: the GIF url from Tenor (a public CDN address, no user or partner id)
-     * is fetched as bytes. Those bytes are then sent on the encrypted attachment path.
+     * DATA-FLOW: a KLIPY CDN url (no user or partner id) is fetched as bytes.
+     * Those bytes are cached in memory, then sent on the encrypted attachment path.
      */
-    suspend fun bytes(url: String, max: Int): ByteArray? = withContext(Dispatchers.IO) {
+    override suspend fun bytes(url: String, max: Int): ByteArray? = withContext(Dispatchers.IO) {
         synchronized(lock) { bytes.get(url) }?.let { return@withContext it }
-        val data = httpsBytes(url, max, "image/gif,image/*,*/*") ?: return@withContext null
+        val data = httpsBytes(url, max, "image/gif,image/webp,image/*,*/*") ?: return@withContext null
         synchronized(lock) { bytes.put(url, data) }
         data
     }
 
-    /**
-     * DATA-FLOW: the two emoji codepoints are requested from gstatic. No name,
-     * no account, no partner. A hit is cached in memory, then sent as a sticker.
-     */
-    suspend fun kitchen(left: String, right: String): ByteArray? = withContext(Dispatchers.IO) {
-        val a = token(left)
-        val b = token(right)
-        if (a.isEmpty() || b.isEmpty()) return@withContext null
-        val key = "$a|$b"
-        synchronized(lock) { bytes.get(key) }?.let { return@withContext it }
-        synchronized(lock) { if (key in kitchenMiss) return@withContext null }
-        val hit = probe(a, b) ?: probe(b, a)
-        synchronized(lock) {
-            if (hit == null) {
-                kitchenMiss.add(key)
-                kitchenMiss.add("$b|$a")
-                while (kitchenMiss.size > 240) {
-                    val first = kitchenMiss.iterator().next()
-                    kitchenMiss.remove(first)
-                }
-            } else {
-                bytes.put(key, hit)
-                bytes.put("$b|$a", hit)
-            }
-        }
-        hit
-    }
-
-    fun kitchenToken(emoji: String): String = token(emoji)
-
-    private fun tenor(mode: String, query: String): List<TenorGif> {
-        val key = BuildConfig.TENOR_API_KEY
-        if (key.isEmpty()) return emptyList()
-        val cacheKey = "$mode:$query"
-        synchronized(lock) { queryCache[cacheKey] }?.let { return it }
-        val q = if (query.isEmpty()) "" else "&q=" + URLEncoder.encode(query, "UTF-8")
-        // DATA-FLOW: the search word (or none, for trending) goes to Tenor with the app key.
-        // Nothing about this person or their partner is included. The JSON is cached in memory only.
-        val url = TENOR + mode + "?key=" + URLEncoder.encode(key, "UTF-8") +
-            "&client_key=betweenly&limit=24&media_filter=tinygif,gif" + q
-        val body = httpsBytes(url, 512 * 1024, "application/json") ?: return emptyList()
-        val parsed = parseTenor(body)
-        synchronized(lock) { queryCache[cacheKey] = parsed }
-        return parsed
-    }
-
-    private fun parseTenor(body: ByteArray): List<TenorGif> {
+    private fun parse(body: ByteArray): GifPage {
         val root = try {
             JSONObject(String(body, Charsets.UTF_8))
         } catch (_: Exception) {
-            return emptyList()
+            return GifPage(emptyList(), false)
         }
-        val results = root.optJSONArray("results") ?: return emptyList()
-        val out = ArrayList<TenorGif>(results.length())
-        for (i in 0 until results.length()) {
-            val item = results.optJSONObject(i) ?: continue
-            val formats = item.optJSONObject("media_formats") ?: continue
-            val tiny = formats.optJSONObject("tinygif") ?: formats.optJSONObject("gif") ?: continue
-            val full = formats.optJSONObject("gif") ?: tiny
-            val preview = tiny.optString("url")
-            val send = full.optString("url")
+        val data = root.optJSONObject("data") ?: return GifPage(emptyList(), false)
+        val list = data.optJSONArray("data")
+        val hasNext = data.optBoolean("has_next", false)
+        if (list == null) return GifPage(emptyList(), hasNext)
+        val out = ArrayList<GifHit>(list.length())
+        for (i in 0 until list.length()) {
+            val item = list.optJSONObject(i) ?: continue
+            val file = item.optJSONObject("file") ?: continue
+            val preview = fileUrl(file, "sm") ?: fileUrl(file, "xs") ?: continue
+            val send = fileUrl(file, "md") ?: fileUrl(file, "hd") ?: preview
             if (!preview.startsWith("https://") || !send.startsWith("https://")) continue
-            val id = item.optString("id").ifBlank { preview }
-            out.add(TenorGif(id, preview, send))
+            val id = when (val raw = item.opt("id")) {
+                null, JSONObject.NULL -> ""
+                else -> raw.toString()
+            }.ifBlank { item.optString("slug") }.ifBlank { preview }
+            out.add(GifHit(id, preview, send))
         }
-        return out
+        return GifPage(out, hasNext)
     }
 
-    private fun probe(left: String, right: String): ByteArray? {
-        for (date in dates) {
-            val url = KITCHEN + date + "/" + left + "/" + left + "_" + right + ".png"
-            val data = httpsBytes(url, 700 * 1024, "image/png,image/*")
-            if (data != null && data.size > 32) return data
-        }
+    /** Prefer gif, then webp, inside one size bucket. Missing buckets are skipped. */
+    private fun fileUrl(file: JSONObject, size: String): String? {
+        val bucket = file.optJSONObject(size) ?: return null
+        val gif = bucket.optJSONObject("gif")?.optString("url").orEmpty()
+        if (gif.startsWith("https://")) return gif
+        val webp = bucket.optJSONObject("webp")?.optString("url").orEmpty()
+        if (webp.startsWith("https://")) return webp
         return null
     }
 
-    private fun token(emoji: String): String {
-        val parts = ArrayList<String>(4)
-        var i = 0
-        while (i < emoji.length) {
-            val cp = emoji.codePointAt(i)
-            i += Character.charCount(cp)
-            if (cp == 0xFE0F) continue
-            parts.add("u" + Integer.toHexString(cp))
-        }
-        return parts.joinToString("-")
+    /**
+     * Random id for this install. Stored outside the pair prefs so unpair does
+     * not mint a new one, and it is never copied from a name, key, or message.
+     */
+    private fun customerId(context: Context): String {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val saved = prefs.getString(ID, null)
+        if (!saved.isNullOrBlank()) return saved
+        val fresh = UUID.randomUUID().toString()
+        prefs.edit().putString(ID, fresh).commit()
+        return prefs.getString(ID, null) ?: fresh
     }
 
-    private fun httpsBytes(url: String, max: Int, accept: String): ByteArray? {
-        if (!url.startsWith("https://")) return null
-        val conn = try {
-            URL(url).openConnection()
-        } catch (_: Exception) {
-            return null
-        }
-        if (conn !is HttpsURLConnection) return null
-        return try {
-            conn.instanceFollowRedirects = true
-            conn.connectTimeout = 8_000
-            conn.readTimeout = 12_000
-            conn.setRequestProperty("Accept", accept)
-            conn.setRequestProperty("User-Agent", "Betweenly")
-            val code = conn.responseCode
-            if (code != HttpURLConnection.HTTP_OK) return null
-            if (conn.url?.protocol != "https") return null
-            val declared = conn.contentLengthLong
-            if (declared > max) return null
-            val stream = conn.inputStream ?: return null
-            stream.use { input ->
-                val out = ByteArrayOutputStream()
-                val buf = ByteArray(8 * 1024)
-                var total = 0
-                while (total < max) {
-                    val n = input.read(buf, 0, minOf(buf.size, max - total))
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    total += n
-                }
-                val extra = if (total >= max) input.read() else -1
-                if (extra >= 0) null else out.toByteArray().takeIf { it.isNotEmpty() }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        } finally {
-            conn.disconnect()
-        }
+    private companion object {
+        const val PREFS = "gif"
+        const val ID = "id"
+        val KEY = Regex("[A-Za-z0-9_\\-]+")
     }
 }
 
-/** Emoji that show up in the kitchen and the sticker tab. Classic set, no network. */
-internal val chatEmoji: List<String> = listOf(
-    "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🙂", "😉",
-    "😊", "😍", "😘", "😗", "😋", "😜", "🤪", "🤗", "🤔", "😐",
-    "😏", "🙄", "😌", "😴", "😷", "🤠", "😎", "🤓", "😮", "😲",
-    "😳", "🥺", "😢", "😭", "😱", "😤", "😡", "🤯", "👍", "👎",
-    "👏", "🙏", "👋", "💪", "✌️", "🤞", "👌", "🔥", "✨", "🎉",
-    "💯", "⭐", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔",
-    "💕", "🌹", "👀", "💀", "👻", "💩", "😺", "😸", "😻", "🙈",
-)
+object ChatRemote {
+    val gifs: GifProvider = KlipyProvider()
+}
+
+private fun httpsBytes(url: String, max: Int, accept: String): ByteArray? {
+    if (!url.startsWith("https://")) return null
+    val conn = try {
+        URL(url).openConnection()
+    } catch (_: Exception) {
+        return null
+    }
+    if (conn !is HttpsURLConnection) return null
+    return try {
+        conn.instanceFollowRedirects = true
+        conn.connectTimeout = 8_000
+        conn.readTimeout = 12_000
+        conn.setRequestProperty("Accept", accept)
+        conn.setRequestProperty("User-Agent", "Betweenly")
+        val code = conn.responseCode
+        if (code != HttpURLConnection.HTTP_OK) return null
+        if (conn.url?.protocol != "https") return null
+        val declared = conn.contentLengthLong
+        if (declared > max) return null
+        val stream = conn.inputStream ?: return null
+        stream.use { input ->
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(8 * 1024)
+            var total = 0
+            while (total < max) {
+                val n = input.read(buf, 0, minOf(buf.size, max - total))
+                if (n < 0) break
+                out.write(buf, 0, n)
+                total += n
+            }
+            val extra = if (total >= max) input.read() else -1
+            if (extra >= 0) null else out.toByteArray().takeIf { it.isNotEmpty() }
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    } finally {
+        conn.disconnect()
+    }
+}

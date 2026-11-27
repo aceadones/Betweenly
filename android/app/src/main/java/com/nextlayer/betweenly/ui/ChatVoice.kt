@@ -501,7 +501,7 @@ fun ChatVoiceBubble(
     val position = if (active) play.position else 0
     val wave = remember(message.id, message.json.optString("wave")) { parseWave(message.json.optString("wave")) }
     val fraction = if (active && duration > 0) position / duration.toFloat() else 0f
-    val ink = if (message.outgoing) LdColors.white else LdColors.onGlass
+    val ink = ChatTheme.ink(message.outgoing)
     LaunchedEffect(active, playing) {
         if (!active || !playing) return@LaunchedEffect
         while (isActive) {

@@ -2,8 +2,6 @@ package com.nextlayer.betweenly.ui
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Paint
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -29,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +44,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -57,8 +57,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.nextlayer.betweenly.ChatMessage
-import com.nextlayer.betweenly.ChatStore
 import com.nextlayer.betweenly.DrawStore
 import com.nextlayer.betweenly.R
 import com.nextlayer.betweenly.SavedDrawing
@@ -68,7 +66,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -82,9 +79,8 @@ class ChatDraft(
     val video: Boolean,
     val asFile: Boolean,
     val fromCamera: Boolean,
+    val kind: String? = null,
 )
-
-private enum class PanelTab { Gif, Kitchen, Stickers }
 
 @Composable
 fun ChatAttachPreview(
@@ -231,79 +227,85 @@ private fun DraftPicture(draft: ChatDraft, modifier: Modifier) {
     }
 }
 
+/** GIF search only. Gboard stickers arrive through the message field, not this panel. */
 @Composable
 fun ChatStickerPanel(
-    messages: List<ChatMessage>,
     onGif: (ByteArray) -> Unit,
-    onSticker: (ByteArray, String) -> Unit,
     onClose: () -> Unit,
 ) {
-    var tab by remember { mutableStateOf(PanelTab.Gif) }
     BackHandler(onBack = onClose)
     Column(
         Modifier
             .fillMaxWidth()
-            .height(320.dp)
+            .height(340.dp)
             .ldGlass(RoundedCornerShape(topStart = LdRadius.card, topEnd = LdRadius.card), solid = true),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            PanelChip(stringResource(R.string.chat_tab_gif), tab == PanelTab.Gif) { tab = PanelTab.Gif }
-            PanelChip(stringResource(R.string.chat_tab_kitchen), tab == PanelTab.Kitchen) { tab = PanelTab.Kitchen }
-            PanelChip(stringResource(R.string.chat_tab_stickers), tab == PanelTab.Stickers) { tab = PanelTab.Stickers }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (tab) {
-                PanelTab.Gif -> GifTab(onGif)
-                PanelTab.Kitchen -> KitchenTab(onSticker)
-                PanelTab.Stickers -> StickerTab(messages, onSticker)
-            }
-        }
+        GifTab(onGif, Modifier.weight(1f).fillMaxWidth())
     }
 }
 
-@Composable
-private fun PanelChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val press = remember(label) { MutableInteractionSource() }
-    Text(
-        label,
-        modifier = Modifier
-            .pressScale(press)
-            .clip(RoundedCornerShape(LdRadius.chip))
-            .background(if (selected) Color.White.copy(alpha = 0.14f) else Color.Transparent)
-            .clickable(interactionSource = press, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        color = if (selected) LdColors.onGlass else LdColors.onGlassMuted,
-        style = MaterialTheme.typography.labelLarge,
-    )
-}
+private class GifList(val hits: List<GifHit>, val page: Int, val hasNext: Boolean)
 
 @Composable
-private fun GifTab(onGif: (ByteArray) -> Unit) {
+private fun GifTab(onGif: (ByteArray) -> Unit, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val provider = ChatRemote.gifs
+    val ready = provider.ready()
     var query by remember { mutableStateOf("") }
-    var hits by remember { mutableStateOf<List<TenorGif>>(emptyList()) }
+    var list by remember { mutableStateOf(GifList(emptyList(), 1, false)) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
-    val ready = ChatRemote.tenorReady()
+    val grid = rememberLazyGridState()
     LaunchedEffect(query, ready) {
         if (!ready) return@LaunchedEffect
-        delay(if (query.isBlank()) 0 else 320)
+        delay(if (query.isBlank()) 0 else 350)
         busy = true
         failed = false
         val loaded = try {
-            if (query.isBlank()) ChatRemote.featured() else ChatRemote.search(query)
+            provider.load(context, query, 1)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             null
         }
         busy = false
-        if (loaded == null) failed = true else hits = loaded
+        if (loaded == null) {
+            failed = true
+            list = GifList(emptyList(), 1, false)
+        } else {
+            list = GifList(loaded.hits, 1, loaded.hasNext)
+        }
     }
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+    LaunchedEffect(grid, list.hasNext, list.hits.size, ready) {
+        if (!ready || !list.hasNext) return@LaunchedEffect
+        snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .collect { last ->
+                val shown = list
+                if (!shown.hasNext || busy || last < shown.hits.size - 8) return@collect
+                busy = true
+                val loaded = try {
+                    provider.load(context, query, shown.page + 1)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
+                }
+                busy = false
+                if (loaded == null || loaded.hits.isEmpty()) {
+                    list = GifList(shown.hits, shown.page, false)
+                } else {
+                    val seen = shown.hits.map { it.id }.toHashSet()
+                    list = GifList(
+                        shown.hits + loaded.hits.filter { it.id !in seen },
+                        shown.page + 1,
+                        loaded.hasNext,
+                    )
+                }
+            }
+    }
+    val hits = list.hits
+    Column(modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
         BasicTextField(
             value = query,
             onValueChange = { query = it.take(40) },
@@ -352,6 +354,7 @@ private fun GifTab(onGif: (ByteArray) -> Unit) {
             else -> Box(Modifier.weight(1f).fillMaxWidth()) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(96.dp),
+                    state = grid,
                     contentPadding = PaddingValues(bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -360,7 +363,7 @@ private fun GifTab(onGif: (ByteArray) -> Unit) {
                         GifCell(hit) {
                             scope.launch {
                                 val bytes = try {
-                                    ChatRemote.bytes(hit.sendUrl, ChatMedia.MAX_BYTES)
+                                    provider.bytes(hit.sendUrl, ChatMedia.MAX_BYTES)
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
@@ -380,15 +383,22 @@ private fun GifTab(onGif: (ByteArray) -> Unit) {
                 }
             }
         }
+        Text(
+            stringResource(R.string.chat_gif_credit),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp),
+            color = LdColors.onGlassMuted,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
 @Composable
-private fun GifCell(hit: TenorGif, onClick: () -> Unit) {
+private fun GifCell(hit: GifHit, onClick: () -> Unit) {
     var bitmap by remember(hit.previewUrl) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(hit.previewUrl) {
         val bytes = try {
-            ChatRemote.bytes(hit.previewUrl, 400 * 1024)
+            ChatRemote.gifs.bytes(hit.previewUrl, 400 * 1024)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -413,152 +423,6 @@ private fun GifCell(hit: TenorGif, onClick: () -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        }
-    }
-}
-
-@Composable
-private fun KitchenTab(onSticker: (ByteArray, String) -> Unit) {
-    var first by remember { mutableStateOf<String?>(null) }
-    var second by remember { mutableStateOf<String?>(null) }
-    var combo by remember { mutableStateOf<Bitmap?>(null) }
-    var comboBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var missing by remember { mutableStateOf(false) }
-    LaunchedEffect(first, second) {
-        val left = first
-        val right = second
-        combo = null
-        comboBytes = null
-        missing = false
-        if (left == null || right == null) return@LaunchedEffect
-        busy = true
-        val bytes = try {
-            ChatRemote.kitchen(left, right)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            null
-        }
-        busy = false
-        if (bytes == null) {
-            missing = true
-        } else {
-            comboBytes = bytes
-            combo = stillGif(bytes)
-        }
-    }
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Text(first ?: "·", style = MaterialTheme.typography.headlineMedium)
-            Text("  +  ", color = LdColors.onGlassMuted)
-            Text(second ?: "·", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.weight(1f))
-            if (busy) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = LdColors.onGlass)
-            }
-            val png = combo
-            val raw = comboBytes
-            if (png != null && raw != null) {
-                Image(
-                    bitmap = png.asImageBitmap(),
-                    contentDescription = stringResource(R.string.chat_kitchen_send),
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSticker(raw, "image/png") },
-                )
-            }
-        }
-        if (first == null || second == null) {
-            Text(stringResource(R.string.chat_kitchen_pick), color = LdColors.onGlassMuted, style = MaterialTheme.typography.bodySmall)
-        } else if (missing) {
-            Text(stringResource(R.string.chat_kitchen_none), color = LdColors.onGlassMuted, style = MaterialTheme.typography.bodySmall)
-        }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(48.dp),
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp),
-        ) {
-            items(chatEmoji) { emoji ->
-                Box(
-                    Modifier
-                        .size(48.dp)
-                        .clickable {
-                            if (first == null || (first != null && second != null)) {
-                                first = emoji
-                                second = null
-                            } else {
-                                second = emoji
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(emoji, style = MaterialTheme.typography.titleLarge)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun StickerTab(messages: List<ChatMessage>, onSticker: (ByteArray, String) -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val recent = remember(messages) {
-        messages.filter { it.json.optString("t") == "att" && it.json.optString("kind") == "sticker" }.take(24)
-    }
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(72.dp),
-        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        if (recent.isEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.chat_stickers_empty),
-                    color = LdColors.onGlassMuted,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-            }
-        }
-        items(recent, key = { it.id }) { message ->
-            Box(
-                Modifier
-                    .height(72.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable {
-                        scope.launch {
-                            val bytes = withContext(Dispatchers.IO) { ChatStore.readAttachment(context, message.id) }
-                            if (bytes != null) {
-                                val mime = message.json.optString("mime").ifBlank { "image/png" }
-                                onSticker(bytes, mime)
-                            }
-                        }
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                ChatFrame(
-                    message.id,
-                    animate = message.json.optString("mime") == "image/gif" || message.json.optString("mime") == "image/webp",
-                    maxEdge = 240,
-                    modifier = Modifier.fillMaxSize(),
-                    desc = stringResource(R.string.chat_sticker_cd),
-                    scale = ContentScale.Fit,
-                )
-            }
-        }
-        items(chatEmoji) { emoji ->
-            Box(
-                Modifier.size(56.dp).clickable {
-                    val png = emojiPng(emoji) ?: return@clickable
-                    onSticker(png, "image/png")
-                },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(emoji, style = MaterialTheme.typography.headlineMedium)
-            }
         }
     }
 }
@@ -692,27 +556,5 @@ private fun stillGif(bytes: ByteArray): Bitmap? {
         null
     } catch (_: OutOfMemoryError) {
         null
-    }
-}
-
-/** Draws one emoji onto a transparent PNG so it can travel as a sticker. */
-internal fun emojiPng(emoji: String): ByteArray? {
-    val size = 256
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    return try {
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = 180f
-        }
-        val y = size / 2f - (paint.ascent() + paint.descent()) / 2f
-        canvas.drawText(emoji, size / 2f, y, paint)
-        val out = ByteArrayOutputStream()
-        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) return null
-        out.toByteArray()
-    } catch (_: Exception) {
-        null
-    } finally {
-        if (!bitmap.isRecycled) bitmap.recycle()
     }
 }

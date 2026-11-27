@@ -71,6 +71,7 @@ object Lu {
         )
     }
     val Plus: ImageVector by lazy { icon("M5 12h14", "M12 5v14") }
+    val CirclePlus: ImageVector by lazy { icon(circle(12f, 12f, 10f), "M12 8v8", "M8 12h8") }
     val ChevronLeft: ImageVector by lazy { icon("m15 18-6-6 6-6") }
     val ChevronRight: ImageVector by lazy { icon("m9 18 6-6-6-6") }
     val ChevronDown: ImageVector by lazy { icon("m6 9 6 6 6-6") }

@@ -152,7 +152,7 @@ class LiveLocationService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_logo)
+            .setSmallIcon(R.drawable.ic_stat_location)
             .setColor(ContextCompat.getColor(this, R.color.notif_accent))
             .setContentTitle(getString(R.string.live_location_on))
             .setContentText(getString(R.string.live_location_on))

@@ -69,8 +69,8 @@ import kotlinx.coroutines.launch
  * a bottom dock switches Activity, Chat, Location, and Profile. The map,
  * camera, and drawing studio sit above that dock. Duet is a separate app.
  *
- * Widget and notification extras: `open=track`, `open=chat`, `open=activity`.
- * The V1 widget still sends `open=settings`; that opens Profile.
+ * Widget and notification extras: `open=track`, `open=chat`, `open=activity`,
+ * `open=draw` (drawing studio). The V1 widget still sends `open=settings`; that opens Profile.
  *
  * Pulls the inbox on resume and every 5 seconds while this window is open
  * (every 2 seconds while [AppState.fastPoll] is set). Chat, drawings, and
@@ -144,6 +144,7 @@ private enum class Screen {
     Track,
     Camera,
     Drawing,
+    SavedDrawings,
 }
 
 private enum class Tab { Activity, Chat, Location, Profile }
@@ -155,7 +156,6 @@ private fun Root(startOpen: String?) {
     val initial = remember { startRoute(context, startOpen) }
     var screenName by rememberSaveable { mutableStateOf(initial.screen.name) }
     var tabName by rememberSaveable { mutableStateOf(initial.tab.name) }
-    var threadOpen by rememberSaveable { mutableStateOf(startOpen == "chat") }
     var privacyFrom by rememberSaveable { mutableStateOf(Screen.Onboarding.name) }
     val screen = screenName.toScreen()
     val tab = tabName.toTab()
@@ -171,18 +171,16 @@ private fun Root(startOpen: String?) {
             "chat" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Chat.name
-                threadOpen = true
             }
             "activity" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Activity.name
-                threadOpen = false
             }
+            "draw" -> screenName = Screen.Drawing.name
             // V1 widget. Profile replaced the settings screen.
             "settings" -> {
                 screenName = Screen.Main.name
                 tabName = Tab.Profile.name
-                threadOpen = false
             }
         }
     }
@@ -200,7 +198,7 @@ private fun Root(startOpen: String?) {
     )
 
     val leave = screen == Screen.Privacy || screen == Screen.Camera || screen == Screen.Track ||
-        screen == Screen.Drawing
+        screen == Screen.Drawing || screen == Screen.SavedDrawings
     BackHandler(enabled = leave) {
         screenName = if (screen == Screen.Privacy) privacyFrom else Screen.Main.name
     }
@@ -252,14 +250,16 @@ private fun Root(startOpen: String?) {
             Screen.Track -> TrackScreen(onBack = { screenName = Screen.Main.name })
             Screen.Camera -> CameraRoute(onClose = { screenName = Screen.Main.name })
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
+            Screen.SavedDrawings -> com.nextlayer.betweenly.ui.SavedDrawingsScreen(
+                onBack = { screenName = Screen.Main.name },
+            )
             Screen.Main -> MainShell(
                 tab = tab,
-                threadOpen = threadOpen,
                 onTab = { tabName = it.name },
-                onThread = { threadOpen = it },
                 onTrack = { screenName = Screen.Track.name },
                 onCamera = { screenName = Screen.Camera.name },
                 onOpenDrawing = { screenName = Screen.Drawing.name },
+                onSavedDrawings = { screenName = Screen.SavedDrawings.name },
                 onPrivacy = {
                     privacyFrom = Screen.Main.name
                     screenName = Screen.Privacy.name
@@ -284,22 +284,18 @@ private fun Root(startOpen: String?) {
 @Composable
 private fun MainShell(
     tab: Tab,
-    threadOpen: Boolean,
     onTab: (Tab) -> Unit,
-    onThread: (Boolean) -> Unit,
     onTrack: () -> Unit,
     onCamera: () -> Unit,
     onOpenDrawing: () -> Unit,
+    onSavedDrawings: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val unread by ChatStore.unreadCount.collectAsState()
     LaunchedEffect(Unit) { ChatStore.loadUnread(context) }
-    val fullChat = tab == Tab.Chat && threadOpen
-    if (tab != Tab.Chat && threadOpen) {
-        SideEffect { onThread(false) }
-    }
+    val fullChat = tab == Tab.Chat
     val tabSlide = with(LocalDensity.current) { 24.dp.roundToPx() }
     Scaffold(
         containerColor = Color.Transparent,
@@ -354,13 +350,15 @@ private fun MainShell(
                         onOpenDrawing = onOpenDrawing,
                     )
                     Tab.Chat -> ChatScreen(
-                        opened = threadOpen,
-                        onOpen = { onThread(true) },
-                        onBack = { onThread(false) },
+                        onBack = { onTab(Tab.Activity) },
                         onOpenCamera = onCamera,
                     )
                     Tab.Location -> HomeScreen(onTrack = onTrack)
-                    Tab.Profile -> ProfileScreen(onPrivacy = onPrivacy, onUnpaired = onUnpaired)
+                    Tab.Profile -> ProfileScreen(
+                        onPrivacy = onPrivacy,
+                        onUnpaired = onUnpaired,
+                        onSavedDrawings = onSavedDrawings,
+                    )
                 }
             }
         }
@@ -458,11 +456,15 @@ private fun startRoute(context: android.content.Context, open: String?): Start {
     }
     val tab = when (open) {
         "chat" -> Tab.Chat
-        "activity" -> Tab.Activity
+        "activity", "draw" -> Tab.Activity
         "settings" -> Tab.Profile
         else -> Tab.Location
     }
-    val screen = if (open == "track") Screen.Track else Screen.Main
+    val screen = when (open) {
+        "track" -> Screen.Track
+        "draw" -> Screen.Drawing
+        else -> Screen.Main
+    }
     return Start(screen, tab)
 }
 
@@ -471,7 +473,7 @@ private fun screenForward(from: Screen, to: Screen): Boolean {
         Screen.Onboarding -> 0
         Screen.Pair -> 1
         Screen.Main -> 2
-        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing -> 3
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings -> 3
     }
     return depth(to) >= depth(from)
 }

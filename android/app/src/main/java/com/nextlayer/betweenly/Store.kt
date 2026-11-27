@@ -84,6 +84,10 @@ object Store {
     private const val CHAT_AUTOSAVE = "chat_autosave"
     private const val CHAT_RECEIPTS = "chat_read_receipts"
     private const val CHAT_HIDE_ACTIVITY = "chat_hide_activity"
+    private const val BUBBLE_MINE = "chat_bubble_mine"
+    private const val BUBBLE_THEIRS = "chat_bubble_theirs"
+    private const val BUBBLE_MINE_GLASS = "chat_bubble_mine_glass"
+    private const val BUBBLE_THEIRS_GLASS = "chat_bubble_theirs_glass"
     private const val NOTIFY_MSG = "notify_msg"
     private const val NOTIFY_DRAW = "notify_draw"
     private const val NOTIF_MODE = "notif_mode"
@@ -537,6 +541,48 @@ object Store {
         }
     }
 
+    /** 0 means the built-in bubble color. Any other value is an opaque ARGB. This phone only. */
+    fun chatBubbleMine(context: Context): Int = prefs(context).getInt(BUBBLE_MINE, 0)
+
+    fun chatBubbleTheirs(context: Context): Int = prefs(context).getInt(BUBBLE_THEIRS, 0)
+
+    /** Mine starts solid. Theirs starts as dark glass. */
+    fun chatBubbleMineGlass(context: Context): Boolean = prefs(context).getBoolean(BUBBLE_MINE_GLASS, false)
+
+    fun chatBubbleTheirsGlass(context: Context): Boolean = prefs(context).getBoolean(BUBBLE_THEIRS_GLASS, true)
+
+    fun setChatBubbleMine(context: Context, argb: Int) {
+        synchronized(lock) {
+            if (argb == prefs(context).getInt(BUBBLE_MINE, 0)) return
+            prefs(context).edit().putInt(BUBBLE_MINE, argb).commit()
+            bump()
+        }
+    }
+
+    fun setChatBubbleTheirs(context: Context, argb: Int) {
+        synchronized(lock) {
+            if (argb == prefs(context).getInt(BUBBLE_THEIRS, 0)) return
+            prefs(context).edit().putInt(BUBBLE_THEIRS, argb).commit()
+            bump()
+        }
+    }
+
+    fun setChatBubbleMineGlass(context: Context, glass: Boolean) {
+        synchronized(lock) {
+            if (glass == prefs(context).getBoolean(BUBBLE_MINE_GLASS, false)) return
+            prefs(context).edit().putBoolean(BUBBLE_MINE_GLASS, glass).commit()
+            bump()
+        }
+    }
+
+    fun setChatBubbleTheirsGlass(context: Context, glass: Boolean) {
+        synchronized(lock) {
+            if (glass == prefs(context).getBoolean(BUBBLE_THEIRS_GLASS, true)) return
+            prefs(context).edit().putBoolean(BUBBLE_THEIRS_GLASS, glass).commit()
+            bump()
+        }
+    }
+
     private fun wallpaperOk(value: String): Boolean {
         if (value == "default" || value == "image") return true
         if (!value.startsWith("color:")) return false
@@ -550,12 +596,13 @@ object Store {
      * cancels the location alarm and the battery alarm.
      *
      * Kept on purpose: this phone's own name, avatar, FCM token, the last
-     * update-check time, the saved update offer, the notification wording, and
-     * the animations preference. Those are not the relationship. The FCM token is also still
+     * update-check time, the saved update offer, the notification wording,
+     * the animations preference, and the chat bubble colors. Those are not the relationship. The FCM token is also still
      * registered with Google; wiping the local copy would not revoke it.
      */
     fun unpair(context: Context) {
         val app = context.applicationContext
+        ConversationShortcut.remove(app)
         synchronized(lock) {
             pairGeneration.incrementAndGet()
             SharingScheduler.cancel(app)
@@ -573,6 +620,10 @@ object Store {
             val notifCustom = prefs(app).getString(NOTIF_CUSTOM, "") ?: ""
             val notifAlarm = prefs(app).getString(NOTIF_ALARM, "") ?: ""
             val animations = prefs(app).getBoolean(ANIM, true)
+            val bubbleMine = prefs(app).getInt(BUBBLE_MINE, 0)
+            val bubbleTheirs = prefs(app).getInt(BUBBLE_THEIRS, 0)
+            val bubbleMineGlass = prefs(app).getBoolean(BUBBLE_MINE_GLASS, false)
+            val bubbleTheirsGlass = prefs(app).getBoolean(BUBBLE_THEIRS_GLASS, true)
             Secure.remove(app, SESSION)
             prefs(app).edit().clear().commit()
             val editor = prefs(app).edit()
@@ -588,6 +639,10 @@ object Store {
             editor.putString(NOTIF_CUSTOM, notifCustom)
             editor.putString(NOTIF_ALARM, notifAlarm)
             editor.putBoolean(ANIM, animations)
+            editor.putInt(BUBBLE_MINE, bubbleMine)
+            editor.putInt(BUBBLE_THEIRS, bubbleTheirs)
+            editor.putBoolean(BUBBLE_MINE_GLASS, bubbleMineGlass)
+            editor.putBoolean(BUBBLE_THEIRS_GLASS, bubbleTheirsGlass)
             if (avatar != null) {
                 editor.putString(MY_AVATAR, Base64.encodeToString(avatar, Base64.NO_WRAP))
             }

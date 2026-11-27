@@ -183,6 +183,14 @@ fun HomeScreen(onTrack: () -> Unit) {
                 onOpen = onTrack,
                 modifier = Modifier.appear(0),
             )
+            if (lat != null && lon != null) {
+                PartnerMapActions(
+                    latitude = lat,
+                    longitude = lon,
+                    name = name,
+                    modifier = Modifier.fillMaxWidth().appear(0),
+                )
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.appear(1).height(IntrinsicSize.Max),

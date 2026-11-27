@@ -176,18 +176,41 @@ fun TileMap(
     fun scheduleSnap() {
         snapJob.job?.cancel()
         blockLoad = true
+        val next = zoom.roundToInt().coerceIn(MIN_ZOOM.toInt(), MAX_ZOOM.toInt())
+        val width = view.width.toFloat()
+        val height = view.height.toFloat()
+        if (next != tileZoom && width > 1f && height > 1f) {
+            TileCache.pin(
+                tileZoom,
+                tileDraws(Camera(camLat, camLon, zoom), width, height, tileZoom),
+            )
+            // Start the destination zoom while the scaled frame is still on screen.
+            TileCache.request(
+                context,
+                tileDraws(Camera(camLat, camLon, zoom), width, height, next),
+                width,
+                height,
+            )
+        }
         snapJob.job = scope.launch {
-            delay(240)
-            val next = zoom.roundToInt().coerceIn(MIN_ZOOM.toInt(), MAX_ZOOM.toInt())
-            val width = view.width.toFloat()
-            val height = view.height.toFloat()
-            if (next != tileZoom && width > 1f && height > 1f) {
-                TileCache.pin(
-                    tileZoom,
-                    tileDraws(Camera(camLat, camLon, zoom), width, height, tileZoom),
-                )
-                tileZoom = next
+            val started = SystemClock.uptimeMillis()
+            while (isActive) {
+                val ready = if (next == tileZoom || width <= 1f || height <= 1f) {
+                    true
+                } else {
+                    val dest = tileDraws(Camera(camLat, camLon, zoom), width, height, next)
+                    if (dest.isEmpty()) {
+                        true
+                    } else {
+                        val have = dest.count { TileCache.peek(it.z, it.fetchX, it.y) != null }
+                        have * 5 >= dest.size * 4
+                    }
+                }
+                if (ready || SystemClock.uptimeMillis() - started >= 1_000L) break
+                delay(40)
             }
+            if (!isActive) return@launch
+            if (next != tileZoom && width > 1f && height > 1f) tileZoom = next
             frame = null
             blockLoad = false
         }
@@ -908,6 +931,14 @@ internal object TileCache {
             .take(MAX_REQUESTS)
         val drop = ArrayList<HttpsURLConnection>()
         synchronized(lock) {
+            val keys = HashSet<String>(ordered.size)
+            for (tile in ordered) keys.add(key(tile.z, tile.fetchX, tile.y))
+            val already = keys == wanted && (
+                queue.isNotEmpty() ||
+                    inflight.isNotEmpty() ||
+                    keys.all { fresh(it) != null }
+                )
+            if (already) return
             generation++
             val gen = generation
             wanted.clear()
@@ -963,12 +994,13 @@ internal object TileCache {
                     if (bitmap == null) continue
                     val cacheKey = key(job.z, job.x, job.y)
                     mem.put(cacheKey, bitmap)
-                    val show = current(job)
                     synchronized(lock) {
                         fails.remove(cacheKey)
                         retryAt.remove(cacheKey)
                     }
-                    if (show) _revision.update { it + 1 }
+                    // A finished tile is kept even if the view moved on, so the next
+                    // zoom can paint it (or its parent) instead of a blank square.
+                    _revision.update { it + 1 }
                 }
             } finally {
                 val again = synchronized(lock) {
@@ -1023,7 +1055,7 @@ internal object TileCache {
     private fun readDisk(file: File): Bitmap? {
         synchronized(dirLock) {
             if (!file.isFile) return null
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOpts())
+            val bitmap = acceptTile(BitmapFactory.decodeFile(file.absolutePath, decodeOpts()))
             if (bitmap == null) {
                 file.delete()
                 return null
@@ -1074,10 +1106,10 @@ internal object TileCache {
                 !current(job) -> FetchResult.Again(0L)
                 else -> {
                     val bytes = connection.inputStream.use { readCap(it, MAX_TILE_BYTES) }
-                    if (bytes == null || !current(job)) {
+                    if (bytes == null || !pngEnds(bytes)) {
                         FetchResult.Again(0L)
                     } else {
-                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts())
+                        val bitmap = acceptTile(BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts()))
                         if (bitmap == null) {
                             FetchResult.Again(0L)
                         } else {
@@ -1149,6 +1181,30 @@ internal object TileCache {
         if (total >= max && input.read() >= 0) return null
         if (total == 0) return null
         return out.toByteArray()
+    }
+
+    /** OSM tiles are square PNGs. A short download can decode as a half-height bitmap. */
+    private fun acceptTile(bitmap: Bitmap?): Bitmap? {
+        if (bitmap == null) return null
+        if (bitmap.width < 64 || bitmap.width != bitmap.height) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return null
+        }
+        return bitmap
+    }
+
+    private fun pngEnds(bytes: ByteArray): Boolean {
+        if (bytes.size < 24) return false
+        if (bytes[0] != 0x89.toByte() || bytes[1] != 'P'.code.toByte() ||
+            bytes[2] != 'N'.code.toByte() || bytes[3] != 'G'.code.toByte()
+        ) {
+            return false
+        }
+        val i = bytes.size - 8
+        return bytes[i] == 'I'.code.toByte() &&
+            bytes[i + 1] == 'E'.code.toByte() &&
+            bytes[i + 2] == 'N'.code.toByte() &&
+            bytes[i + 3] == 'D'.code.toByte()
     }
 
     private fun decodeOpts() = BitmapFactory.Options().apply {

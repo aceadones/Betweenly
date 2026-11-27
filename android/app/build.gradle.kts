@@ -20,8 +20,8 @@ android {
         applicationId = "com.nextlayer.betweenly"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = 2
+        versionName = "0.0.2"
         ndk { abiFilters += listOf("arm64-v8a") }
         // DATA-FLOW: the only server the app talks to for messages/updates (besides map tiles + FCM).
         buildConfigField("String", "RELAY_URL", "\"${prop("relay.url", "https://loviedowpie-relay.example.workers.dev")}\"")
@@ -29,8 +29,8 @@ android {
         buildConfigField("String", "FCM_APP_ID", "\"${prop("fcm.appId")}\"")
         buildConfigField("String", "FCM_API_KEY", "\"${prop("fcm.apiKey")}\"")
         buildConfigField("String", "FCM_SENDER_ID", "\"${prop("fcm.senderId")}\"")
-        // GIF search. Empty until tenor.apiKey is set in local.properties.
-        buildConfigField("String", "TENOR_API_KEY", "\"${prop("tenor.apiKey")}\"")
+        // GIF search. Empty until klipy.apiKey is set in local.properties.
+        buildConfigField("String", "KLIPY_API_KEY", "\"${prop("klipy.apiKey").replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
     signingConfigs {
         create("release") {

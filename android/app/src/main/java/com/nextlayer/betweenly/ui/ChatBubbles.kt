@@ -20,9 +20,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -49,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Shape
@@ -65,12 +68,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.nextlayer.betweenly.ChatMessage
 import com.nextlayer.betweenly.ChatStore
 import com.nextlayer.betweenly.R
+import com.nextlayer.betweenly.Store
 import com.nextlayer.betweenly.ui.icons.Lu
 import com.nextlayer.betweenly.ui.icons.LuIcon
 import kotlinx.coroutines.Dispatchers
@@ -205,7 +210,9 @@ fun ChatBubble(
     onRetryDownload: () -> Unit,
     onToggleReaction: (String) -> Unit,
     modifier: Modifier = Modifier,
-    quote: String? = null,
+    quoted: ChatMessage? = null,
+    quoteMissing: Boolean = false,
+    onOpenQuote: () -> Unit = {},
     onReply: () -> Unit = {},
     lit: Boolean = false,
 ) {
@@ -218,7 +225,10 @@ fun ChatBubble(
         if (!has) ChatStore.fetch(context, message.id)
     }
     val kind = message.json.optString("kind")
-    val bare = type == "att" && (kind == "sticker" || kind == "gif")
+    val caption = message.json.optString("text").trim()
+    val hasQuote = quoted != null || quoteMissing
+    val visual = type == "att" && (kind == "photo" || kind == "video" || kind == "gif")
+    val plainSticker = type == "att" && kind == "sticker" && !hasQuote
     val badges = if (type == "gone" || type == "note") emptyList() else ChatReactions.badges(message.json)
     val arrange = if (message.outgoing) Arrangement.End else Arrangement.Start
     val rowHolder = remember(message.id) { arrayOf(Rect.Zero) }
@@ -254,8 +264,23 @@ fun ChatBubble(
                 Tombstone(message, bubbleHolder) {
                     onLongPress(rowHolder[0], bubbleHolder[0])
                 }
-            } else if (bare) {
-                if (!quote.isNullOrBlank()) QuoteChip(quote, message.outgoing)
+            } else if (visual) {
+                VisualBubble(
+                    message = message,
+                    caption = caption,
+                    ready = ready,
+                    downloadFailed = downloadFailed,
+                    progress = progress,
+                    quoted = quoted,
+                    quoteMissing = quoteMissing,
+                    lit = lit,
+                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                    onOpen = { onOpenVisual(bubbleHolder[0]) },
+                    onOpenQuote = onOpenQuote,
+                    onRetry = onRetryDownload,
+                    onPosition = { bubbleHolder[0] = it },
+                )
+            } else if (plainSticker) {
                 BareImage(
                     message, ready, downloadFailed, progress,
                     onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
@@ -263,6 +288,15 @@ fun ChatBubble(
                     onRetryDownload = onRetryDownload,
                     onPosition = { bubbleHolder[0] = it },
                     lit = lit,
+                )
+            } else if (type == "att" && kind == "sticker") {
+                QuotedSticker(
+                    message, ready, downloadFailed, progress, quoted, quoteMissing, lit,
+                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                    onOpen = { onOpenVisual(bubbleHolder[0]) },
+                    onOpenQuote = onOpenQuote,
+                    onRetry = onRetryDownload,
+                    onPosition = { bubbleHolder[0] = it },
                 )
             } else {
                 val shape = ChatTheme.bubble
@@ -272,60 +306,36 @@ fun ChatBubble(
                         .onGloballyPositioned { bubbleHolder[0] = it.boundsInWindow() }
                         .bubblePlate(message.outgoing, shape, lit),
                 ) {
-                    val media = type == "att" && (kind == "photo" || kind == "video")
-                    if (media) {
-                        Column {
-                            if (!quote.isNullOrBlank()) {
-                                QuoteLine(
-                                    quote,
-                                    message.outgoing,
-                                    Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
-                                )
-                            }
-                            Box(Modifier.padding(4.dp)) {
-                                AttBody(
-                                    message, ready, downloadFailed, progress,
-                                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
-                                    onOpenPhoto = { onOpenVisual(bubbleHolder[0]) },
-                                    onOpenExternal = onOpenExternal,
-                                    onRetryDownload = onRetryDownload,
-                                    insetMedia = true,
-                                )
-                            }
-                            val caption = message.json.optString("text")
-                            if (caption.isNotBlank()) {
-                                Text(
-                                    caption,
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    color = ChatTheme.ink(message.outgoing),
-                                )
-                            }
-                            Meta(message, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+                    Column(
+                        Modifier
+                            .combinedClickable(
+                                onClick = {},
+                                onLongClick = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        if (hasQuote) {
+                            QuoteCard(
+                                quoted = quoted,
+                                missing = quoteMissing,
+                                outgoing = message.outgoing,
+                                onClick = onOpenQuote,
+                                modifier = Modifier.padding(bottom = 6.dp),
+                            )
                         }
-                    } else {
-                        Column(
-                            Modifier
-                                .combinedClickable(
-                                    onClick = {},
-                                    onLongClick = { onLongPress(rowHolder[0], bubbleHolder[0]) },
-                                )
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                        ) {
-                            if (!quote.isNullOrBlank()) QuoteLine(quote, message.outgoing, Modifier)
-                            when (type) {
-                                "link" -> LinkBody(message, { onLongPress(rowHolder[0], bubbleHolder[0]) }, onOpenLink)
-                                "att" -> AttBody(
-                                    message, ready, downloadFailed, progress,
-                                    onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
-                                    onOpenPhoto = { onOpenVisual(bubbleHolder[0]) },
-                                    onOpenExternal = onOpenExternal,
-                                    onRetryDownload = onRetryDownload,
-                                    insetMedia = false,
-                                )
-                                else -> TextBody(message)
-                            }
-                            Meta(message, Modifier)
+                        when (type) {
+                            "link" -> LinkBody(message, { onLongPress(rowHolder[0], bubbleHolder[0]) }, onOpenLink)
+                            "att" -> AttBody(
+                                message, ready, downloadFailed, progress,
+                                onLongPress = { onLongPress(rowHolder[0], bubbleHolder[0]) },
+                                onOpenPhoto = { onOpenVisual(bubbleHolder[0]) },
+                                onOpenExternal = onOpenExternal,
+                                onRetryDownload = onRetryDownload,
+                                insetMedia = false,
+                            )
+                            else -> TextBody(message)
                         }
+                        Meta(message, Modifier.align(Alignment.End))
                     }
                 }
             }
@@ -342,6 +352,182 @@ fun ChatBubble(
                 }
             }
         }
+    }
+}
+
+/**
+ * Photo, video, or GIF. A caption sits under the image in the same bubble.
+ * Without a caption the time and ticks sit on the image corner.
+ */
+@Composable
+private fun VisualBubble(
+    message: ChatMessage,
+    caption: String,
+    ready: Boolean,
+    downloadFailed: Boolean,
+    progress: Float?,
+    quoted: ChatMessage?,
+    quoteMissing: Boolean,
+    lit: Boolean,
+    onLongPress: () -> Unit,
+    onOpen: () -> Unit,
+    onOpenQuote: () -> Unit,
+    onRetry: () -> Unit,
+    onPosition: (Rect) -> Unit,
+) {
+    val kind = message.json.optString("kind")
+    val hasCaption = caption.isNotBlank()
+    val hasQuote = quoted != null || quoteMissing
+    val wide = kind != "gif" || hasCaption || hasQuote
+    val bubbleWidth = if (wide) ChatTheme.photoMax else ChatTheme.stickerMax
+    val maxHeight = if (kind == "video") 240.dp else 320.dp
+    val shape = ChatTheme.bubble
+    val mime = message.json.optString("mime")
+    val animate = kind == "gif" || mime == "image/gif" || mime == "image/webp"
+    Column(
+        Modifier
+            .width(bubbleWidth)
+            .onGloballyPositioned { onPosition(it.boundsInWindow()) }
+            .bubblePlate(message.outgoing, shape, lit),
+    ) {
+        if (hasQuote) {
+            QuoteCard(
+                quoted = quoted,
+                missing = quoteMissing,
+                outgoing = message.outgoing,
+                onClick = onOpenQuote,
+                modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 6.dp),
+            )
+        }
+        val inset = hasCaption || hasQuote
+        val radius = if (inset) LdRadius.inner(ChatTheme.bubbleRadius, 4.dp) else ChatTheme.bubbleRadius
+        Box(Modifier.padding(if (inset) 4.dp else 0.dp)) {
+            FittedStill(
+                message = message,
+                ready = ready,
+                animate = animate,
+                maxHeight = maxHeight,
+                corners = RoundedCornerShape(radius),
+                desc = stringResource(
+                    when (kind) {
+                        "video" -> R.string.chat_video_cd
+                        "gif" -> R.string.chat_gif_cd
+                        else -> R.string.chat_photo_cd
+                    },
+                ),
+                onOpen = onOpen,
+                onLongPress = onLongPress,
+            )
+            if (kind == "video" && (ready || message.json.optString("thumb").isNotEmpty())) {
+                LuIcon(
+                    Lu.Play,
+                    contentDescription = stringResource(R.string.chat_video_cd),
+                    modifier = Modifier.align(Alignment.Center),
+                    tint = Color.White,
+                    size = 42.dp,
+                )
+            }
+            DownloadOverlay(ready, downloadFailed, progress, onRetry, Modifier.align(Alignment.Center))
+            if (!hasCaption) {
+                Meta(
+                    message,
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    onImage = true,
+                )
+            }
+        }
+        if (hasCaption) {
+            Text(
+                caption,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                color = ChatTheme.ink(message.outgoing),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Meta(
+                message,
+                Modifier.align(Alignment.End).padding(start = 12.dp, end = 10.dp, bottom = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FittedStill(
+    message: ChatMessage,
+    ready: Boolean,
+    animate: Boolean,
+    maxHeight: Dp,
+    corners: Shape,
+    desc: String,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val w = message.json.optInt("w")
+    val h = message.json.optInt("h")
+    val ratio = if (w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
+    ) {
+        val natural = maxWidth / ratio
+        val height = natural.coerceIn(96.dp, maxHeight)
+        Box(Modifier.fillMaxWidth().height(height).clip(corners)) {
+            MediaVisual(message, ready, animate, Modifier.fillMaxSize(), desc, corners)
+        }
+    }
+}
+
+/** A sticker that is also a reply. The quote sits inside the bubble, above the image. */
+@Composable
+private fun QuotedSticker(
+    message: ChatMessage,
+    ready: Boolean,
+    downloadFailed: Boolean,
+    progress: Float?,
+    quoted: ChatMessage?,
+    quoteMissing: Boolean,
+    lit: Boolean,
+    onLongPress: () -> Unit,
+    onOpen: () -> Unit,
+    onOpenQuote: () -> Unit,
+    onRetry: () -> Unit,
+    onPosition: (Rect) -> Unit,
+) {
+    val mime = message.json.optString("mime")
+    val animate = mime == "image/gif" || mime == "image/webp"
+    Column(
+        Modifier
+            .width(ChatTheme.stickerMax + 16.dp)
+            .onGloballyPositioned { onPosition(it.boundsInWindow()) }
+            .bubblePlate(message.outgoing, ChatTheme.bubble, lit)
+            .padding(6.dp),
+    ) {
+        QuoteCard(
+            quoted = quoted,
+            missing = quoteMissing,
+            outgoing = message.outgoing,
+            onClick = onOpenQuote,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        )
+        Box(
+            Modifier.combinedClickable(onClick = onOpen, onLongClick = onLongPress),
+        ) {
+            MediaVisual(
+                message,
+                ready,
+                animate,
+                Modifier.fillMaxWidth().heightIn(max = ChatTheme.stickerMax),
+                stringResource(R.string.chat_sticker_cd),
+                RoundedCornerShape(LdRadius.inner(ChatTheme.bubbleRadius, 6.dp)),
+            )
+            DownloadOverlay(ready, downloadFailed, progress, onRetry, Modifier.align(Alignment.Center))
+        }
+        Meta(message, Modifier.align(Alignment.End).padding(top = 2.dp))
     }
 }
 
@@ -463,7 +649,7 @@ private fun LinkBody(message: ChatMessage, onLongPress: () -> Unit, onOpenLink: 
             Text(
                 host,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (message.outgoing) LdColors.white else LdColors.onGlass,
+                color = ChatTheme.ink(message.outgoing),
             )
         }
     }
@@ -576,17 +762,17 @@ private fun FileBody(
             if (downloadFailed) {
                 Text(
                     stringResource(R.string.chat_download_failed),
-                    color = if (message.outgoing) LdColors.white else Color(0xFFFFB4AB),
+                    color = ChatTheme.ink(message.outgoing),
                 )
                 TextButton(onClick = onRetryDownload) {
                     Text(
                         stringResource(R.string.chat_download_retry),
-                        color = if (message.outgoing) LdColors.white else LdColors.onGlass,
+                        color = ChatTheme.ink(message.outgoing),
                     )
                 }
             } else {
                 val fraction = progress
-                val spin = if (message.outgoing) LdColors.white else LdColors.onGlass
+                val spin = ChatTheme.ink(message.outgoing)
                 if (fraction != null && fraction > 0f) {
                     CircularProgressIndicator(
                         progress = { fraction },
@@ -708,23 +894,27 @@ private fun DownloadOverlay(
 }
 
 @Composable
-private fun Meta(message: ChatMessage, modifier: Modifier) {
+private fun Meta(message: ChatMessage, modifier: Modifier, onImage: Boolean = false) {
+    val color = if (onImage) Color.White else ChatTheme.meta(message.outgoing)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End,
-        modifier = modifier.padding(top = 2.dp),
+        modifier = modifier,
     ) {
-        Text(chatTime(message.ts), style = MaterialTheme.typography.labelSmall, color = ChatTheme.meta(message.outgoing))
+        Text(chatTime(message.ts), style = MaterialTheme.typography.labelSmall, color = color)
         if (message.outgoing) {
             Spacer(Modifier.size(4.dp))
-            StatusTick(message.status, outgoing = true)
+            StatusTick(message.status, outgoing = true, onImage = onImage)
         }
     }
 }
 
 @Composable
-private fun StatusTick(status: String, outgoing: Boolean) {
-    val tint = ChatTheme.meta(outgoing)
+private fun StatusTick(status: String, outgoing: Boolean, onImage: Boolean = false) {
+    val tint = when {
+        onImage && status != ChatStore.READ -> Color.White
+        else -> ChatTheme.meta(outgoing)
+    }
     when (status) {
         ChatStore.SENDING -> Text(
             stringResource(R.string.chat_status_sending),
@@ -735,7 +925,7 @@ private fun StatusTick(status: String, outgoing: Boolean) {
             Lu.TriangleAlert,
             contentDescription = stringResource(R.string.chat_status_failed),
             size = 14.dp,
-            tint = if (outgoing) LdColors.white else Color(0xFFFFB4AB),
+            tint = if (onImage) Color.White else ChatTheme.ink(outgoing),
         )
         ChatStore.READ -> LuIcon(
             Lu.CheckCheck,
@@ -858,31 +1048,149 @@ private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modi
     )
 }
 
+/**
+ * WhatsApp-style quote. Darker on glass bubbles, lighter on a solid accent bubble.
+ * A 3dp accent bar sits on the left. Media quotes show a label and a small thumb.
+ */
 @Composable
-private fun QuoteLine(text: String, outgoing: Boolean, modifier: Modifier) {
+fun QuoteCard(
+    quoted: ChatMessage?,
+    missing: Boolean,
+    outgoing: Boolean,
+    onClick: (() -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val look = rememberBubbleLook()
+    val lighter = outgoing && !look.mineGlass
+    val fill = if (lighter) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.28f)
+    val bar = 3.dp
+    val you = stringResource(R.string.you)
+    val partner = Store.partnerName(context).ifBlank { stringResource(R.string.partner_fallback) }
+    Row(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(fill)
+            .drawBehind {
+                drawRect(color = LdColors.primary, size = androidx.compose.ui.geometry.Size(bar.toPx(), size.height))
+            }
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(start = bar + 8.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            if (!missing && quoted != null) {
+                Text(
+                    if (quoted.outgoing) you else partner,
+                    color = LdColors.primary,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                QuoteBody(quoted)
+            } else {
+                Text(
+                    stringResource(R.string.chat_reply_gone),
+                    color = ChatTheme.meta(outgoing),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (!missing && quoted != null && quoteThumbKind(quoted) != null) {
+            Spacer(Modifier.width(8.dp))
+            QuoteThumb(quoted)
+        }
+        if (onClose != null) {
+            val press = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            Box(
+                Modifier
+                    .padding(start = 4.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = press,
+                        indication = null,
+                        onClick = onClose,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                LuIcon(
+                    Lu.X,
+                    contentDescription = stringResource(R.string.chat_reply_cancel),
+                    tint = LdColors.onGlass,
+                    size = 18.dp,
+                )
+            }
+        }
+    }
+}
+
+private fun quoteThumbKind(message: ChatMessage): String? {
+    if (message.json.optString("t") != "att") return null
+    return when (message.json.optString("kind")) {
+        "photo", "video", "gif", "sticker" -> message.json.optString("kind")
+        else -> null
+    }
+}
+
+@Composable
+private fun QuoteBody(message: ChatMessage) {
+    val type = message.json.optString("t")
+    val ink = ChatTheme.meta(message.outgoing)
+    if (type == "gone") {
+        Text(
+            stringResource(R.string.chat_deleted_them),
+            color = ink,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
+    if (type == "att") {
+        when (message.json.optString("kind")) {
+            "photo" -> QuoteLabel(Lu.Image, stringResource(R.string.chat_reply_photo), ink)
+            "video" -> QuoteLabel(Lu.Video, stringResource(R.string.chat_reply_video), ink)
+            "gif" -> QuoteLabel(Lu.Sparkles, stringResource(R.string.chat_reply_gif), ink)
+            "sticker" -> QuoteLabel(Lu.Smile, stringResource(R.string.chat_reply_sticker), ink)
+            "voice" -> QuoteLabel(Lu.Mic, voiceClock(message.json.optInt("dur")), ink)
+            else -> {
+                val name = message.json.optString("name").trim().ifBlank { stringResource(R.string.chat_reply_file) }
+                QuoteLabel(Lu.FileText, name, ink)
+            }
+        }
+        return
+    }
+    val text = message.json.optString("text").trim().ifBlank {
+        message.json.optString("title").trim().ifBlank { message.json.optString("url").trim() }
+    }.ifBlank { stringResource(R.string.chat_reply_gone) }
     Text(
         text,
-        modifier = modifier.padding(bottom = 4.dp),
-        style = MaterialTheme.typography.labelMedium,
-        color = ChatTheme.meta(outgoing),
+        color = ink,
+        style = MaterialTheme.typography.bodySmall,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
 }
 
 @Composable
-private fun QuoteChip(text: String, outgoing: Boolean) {
-    Box(
-        Modifier
-            .padding(bottom = 4.dp)
-            .widthIn(max = 300.dp)
-            .bubblePlate(outgoing, ChatTheme.chip, lit = false),
-    ) {
+private fun QuoteLabel(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, ink: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        LuIcon(icon, contentDescription = null, tint = ink, size = 14.dp)
+        Spacer(Modifier.width(4.dp))
         Text(
-            text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = ChatTheme.meta(outgoing),
+            label,
+            color = ink,
+            style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -890,13 +1198,66 @@ private fun QuoteChip(text: String, outgoing: Boolean) {
 }
 
 @Composable
-private fun Modifier.bubblePlate(outgoing: Boolean, shape: Shape, lit: Boolean): Modifier {
-    if (!outgoing) {
-        val glass = this.darkGlass(shape)
-        return if (lit) glass.border(2.dp, LdColors.white, shape) else glass
+private fun QuoteThumb(message: ChatMessage) {
+    val b64 = message.json.optString("thumb")
+    var bitmap by remember(message.id, b64) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(message.id, b64) {
+        bitmap = withContext(Dispatchers.IO) {
+            if (b64.isNotEmpty()) {
+                try {
+                    val bytes = Base64.decode(b64, Base64.DEFAULT)
+                    ChatMedia.decodeForDisplay(bytes, 160)
+                } catch (_: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
     }
-    val fill = this.clip(shape).background(LdColors.mineBrush())
-    return if (lit) fill.border(2.dp, LdColors.white, shape) else fill
+    val shape = RoundedCornerShape(8.dp)
+    Box(
+        Modifier.size(44.dp).clip(shape).background(Color.Black.copy(alpha = 0.25f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val shown = bitmap
+        if (shown != null) {
+            Image(
+                bitmap = shown.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+        }
+    }
+}
+
+@Composable
+private fun Modifier.bubblePlate(outgoing: Boolean, shape: Shape, lit: Boolean): Modifier {
+    val look = rememberBubbleLook()
+    val glass = if (outgoing) look.mineGlass else look.theirsGlass
+    val custom = if (outgoing) look.mine != 0 else look.theirs != 0
+    val paint = if (outgoing) look.minePaint() else look.theirsPaint()
+    val plate = when {
+        outgoing && !glass && !custom -> this.clip(shape).background(LdColors.mineBrush())
+        !outgoing && glass && !custom -> this.darkGlass(shape)
+        glass -> this.darkGlass(shape, fill = paint.copy(alpha = 0.94f))
+        else -> this.clip(shape).background(paint)
+    }
+    return if (lit) plate.border(2.dp, LdColors.white, shape) else plate
+}
+
+/** Two of these sit on the theme preview so a color change is visible immediately. */
+@Composable
+fun ChatSampleBubble(text: String, outgoing: Boolean, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .widthIn(max = 260.dp)
+            .bubblePlate(outgoing, ChatTheme.bubble, lit = false)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(text, color = ChatTheme.ink(outgoing), style = MaterialTheme.typography.bodyLarge)
+    }
 }
 
 /**

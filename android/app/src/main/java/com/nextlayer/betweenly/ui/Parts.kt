@@ -83,16 +83,25 @@ import kotlin.coroutines.cancellation.CancellationException
 @Composable
 fun Modifier.darkGlass(
     shape: Shape = RoundedCornerShape(LdRadius.card),
+    fill: Color = LdColors.glassFill,
 ): Modifier {
+    val light = LdColors.glassLight
     val sheen = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = 0.16f),
-        0.24f to Color.White.copy(alpha = 0.04f),
+        0f to Color.White.copy(alpha = if (light) 0.55f else 0.16f),
+        0.24f to Color.White.copy(alpha = if (light) 0.12f else 0.04f),
         0.55f to Color.Transparent,
     )
-    val rim = Brush.linearGradient(
-        0f to Color.White.copy(alpha = 0.35f),
-        1f to Color.White.copy(alpha = 0.04f),
-    )
+    val rim = if (light) {
+        Brush.linearGradient(
+            0f to Color.White.copy(alpha = 0.95f),
+            1f to Color(0xFFD62448).copy(alpha = 0.18f),
+        )
+    } else {
+        Brush.linearGradient(
+            0f to Color.White.copy(alpha = 0.35f),
+            1f to Color.White.copy(alpha = 0.04f),
+        )
+    }
     return this
         .shadow(
             elevation = 8.dp,
@@ -111,7 +120,7 @@ fun Modifier.darkGlass(
             )
             val outline = shape.createOutline(inner, layoutDirection, this)
             onDrawBehind {
-                drawRect(LdColors.glassFill)
+                drawRect(fill)
                 drawRect(sheen)
                 translate(left = inset, top = inset) {
                     drawOutline(outline, rim, style = Stroke(width = strokePx))
@@ -383,9 +392,9 @@ private fun LdSwitch(checked: Boolean, enabled: Boolean) {
     )
     val onGlass = LocalOnGlass.current
     val track = when {
-        !enabled -> if (onGlass) Color.White.copy(alpha = 0.16f) else LdColors.colors.inkMuted.copy(alpha = 0.28f)
+        !enabled -> if (onGlass && !LdColors.glassLight) Color.White.copy(alpha = 0.16f) else Color(0xFF5E3A46).copy(alpha = 0.28f)
         checked -> LdColors.primary
-        else -> if (onGlass) Color.White.copy(alpha = 0.28f) else LdColors.colors.glassBorder
+        else -> if (onGlass && !LdColors.glassLight) Color.White.copy(alpha = 0.28f) else Color(0xFF5E3A46).copy(alpha = 0.40f)
     }
     Box(
         Modifier

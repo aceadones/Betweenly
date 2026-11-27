@@ -177,7 +177,7 @@
     <string name="chat_notif">New message from %1$s</string>
     <string name="chat_notif_channel_desc">When your partner sends a message. The notification does not include what they wrote.</string>
     <string name="chat_empty">No messages yet</string>
-    <string name="chat_hint">Message</string>
+    <string name="chat_hint">Message...</string>
     <string name="chat_send">Send</string>
     <string name="chat_attach">Attach</string>
     <string name="chat_gallery">Gallery</string>
@@ -422,7 +422,8 @@
     <string name="chat_tab_kitchen">Emoji Kitchen</string>
     <string name="chat_tab_stickers">Stickers</string>
     <string name="chat_gif_search">Search GIFs</string>
-    <string name="chat_gif_unset">GIF search is not set up on this phone.</string>
+    <string name="chat_gif_unset">GIF search needs a free KLIPY key (see README)</string>
+    <string name="chat_gif_credit">Powered by KLIPY</string>
     <string name="chat_gif_keyboard">A GIF from the keyboard still pastes into the message field.</string>
     <string name="chat_gif_empty">No GIFs for that search.</string>
     <string name="chat_gif_failed">Could not load GIFs.</string>
@@ -518,6 +519,8 @@
     <string name="channel_alarm">Alarms</string>
     <string name="channel_alarm_desc">A loud alarm you can dismiss. The lock screen does not include a name.</string>
     <string name="notif_channel_messages_desc">Messages, pings, and invites. Profile chooses the words. The lock screen stays generic.</string>
+    <string name="notif_reply">Reply</string>
+    <string name="notif_mark_read">Mark as read</string>
     <string name="notif_channel_drawings_desc">When a drawing arrives. Profile chooses the words. The picture is not included.</string>
     <string name="music_card_idle">Your songs</string>
     <string name="music_together">Listen together</string>
@@ -609,4 +612,19 @@
     <string name="duet_playing_title">Playing: %1$s</string>
     <string name="duet_chip_playing">Playing</string>
     <string name="duet_chip_paused">Paused</string>
+    <string name="chat_theme">Theme</string>
+    <string name="chat_theme_background">Background</string>
+    <string name="chat_theme_colors">Colors</string>
+    <string name="chat_theme_mine">My bubbles</string>
+    <string name="chat_theme_theirs">Partner bubbles</string>
+    <string name="chat_bubble_glass">Glass</string>
+    <string name="chat_bubble_solid">Solid</string>
+    <string name="chat_theme_custom">Custom</string>
+    <string name="chat_theme_sample_mine">On my way</string>
+    <string name="chat_theme_sample_theirs">Can\'t wait</string>
+    <string name="chat_sticker_gif">Sticker / GIF</string>
+    <string name="map_open_google">Open in Google Maps</string>
+    <string name="map_directions">Directions</string>
+    <string name="map_google_hint">Opens Google Maps with your partner\'s last location</string>
+    <string name="draw_saved_count">%1$d saved</string>
 </resources>

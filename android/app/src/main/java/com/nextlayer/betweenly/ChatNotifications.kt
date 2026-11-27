@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
@@ -43,6 +44,7 @@ object ChatNotifications {
             sender = Store.partnerName(context),
             detail = detailOf(json),
         )
+        ConversationShortcut.publish(context)
         post(
             context = context,
             channelId = CHANNEL,
@@ -197,7 +199,23 @@ object ChatNotifications {
                 .setContentIntent(pending)
             if (copy.text.isNotEmpty()) {
                 builder.setContentText(copy.text)
-                builder.setStyle(NotificationCompat.BigTextStyle().bigText(copy.text))
+                if (open == "chat") {
+                    // Conversation notice: the system can offer Priority on long-press.
+                    val partner = ConversationShortcut.person(app)
+                    val me = Person.Builder().setName(app.getString(R.string.you)).build()
+                    val style = manager.activeNotifications
+                        .firstOrNull { it.id == notificationId }
+                        ?.notification
+                        ?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
+                        ?: NotificationCompat.MessagingStyle(me)
+                    style.addMessage(copy.text, System.currentTimeMillis(), partner)
+                    builder.setStyle(style)
+                    builder.setShortcutId(ConversationShortcut.ID)
+                    builder.setLocusId(androidx.core.content.LocusIdCompat(ConversationShortcut.ID))
+                    ConversationShortcut.roundAvatar(app)?.let { builder.setLargeIcon(it) }
+                } else {
+                    builder.setStyle(NotificationCompat.BigTextStyle().bigText(copy.text))
+                }
             }
             if (!actionLabel.isNullOrBlank()) {
                 builder.addAction(R.drawable.ic_stat_logo, actionLabel, pending)

@@ -157,16 +157,20 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
                                 subtitle = drawSubtitle,
                                 index = index,
                                 onClick = onOpenDrawing,
-                                chipText = stringResource(R.string.activity_open),
                             ) {
                                 DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
                             }
                             HubCard.Duet -> HubTile(
                                 title = stringResource(R.string.duet_title),
-                                subtitle = stringResource(R.string.duet_card_sub),
+                                subtitle = if (!duetInstalled) {
+                                    stringResource(R.string.duet_install)
+                                } else if (duetNow != null && (duetNow.playing || duetNow.title.isNotBlank())) {
+                                    duetChip(duetInstalled, duetNow)
+                                } else {
+                                    stringResource(R.string.duet_card_sub)
+                                },
                                 index = index,
                                 onClick = { DuetBridge.open(context) },
-                                chipText = duetChip(duetInstalled, duetNow),
                             ) {
                                 DuetMedia(playing = duetInstalled && duetNow?.playing == true)
                             }
@@ -199,7 +203,6 @@ private fun HubTile(
     subtitle: String,
     index: Int,
     onClick: () -> Unit,
-    chipText: String,
     media: @Composable () -> Unit,
 ) {
     val interaction = remember(title) { MutableInteractionSource() }
@@ -228,19 +231,6 @@ private fun HubTile(
                 .clip(mediaShape),
         ) {
             media()
-            Text(
-                chipText,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-                    .clip(RoundedCornerShape(LdRadius.chip))
-                    .background(Color.White.copy(alpha = 0.92f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                style = LdType.Caption,
-                color = LdColors.navy,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
         Column(
             Modifier
@@ -248,13 +238,20 @@ private fun HubTile(
                 .padding(horizontal = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            Text(
-                title,
-                style = LdType.Title,
-                color = LdColors.onGlass,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = LdType.Title,
+                    color = LdColors.onGlass,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LuIcon(Lu.ChevronRight, contentDescription = null, tint = LdColors.onGlass, size = 18.dp)
+            }
             Text(
                 subtitle,
                 style = LdType.Caption,
@@ -268,20 +265,21 @@ private fun HubTile(
 
 @Composable
 private fun DrawMedia(thumb: Bitmap?, waiting: Boolean) {
-    val sky = LdColors.colors
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.linearGradient(listOf(sky.skyTop, sky.skyBottom))),
+            .background(
+                Brush.linearGradient(listOf(Color(0xFFFFE4EA), Color(0xFFFFB7C5), Color(0xFFFF8AA0))),
+            ),
     ) {
         when {
             thumb != null && !thumb.isRecycled -> Image(
                 bitmap = thumb.asImageBitmap(),
                 contentDescription = stringResource(R.string.draw_partner),
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.Crop,
             )
-            waiting -> Box(Modifier.fillMaxSize().background(LdColors.paper.copy(alpha = 0.72f)))
+            waiting -> Unit
             else -> EmptyDrawing()
         }
     }
@@ -294,8 +292,9 @@ private fun EmptyDrawing() {
         LuIcon(
             Lu.Pencil,
             contentDescription = null,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-            tint = LdColors.primary,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+            tint = LdColors.navy,
+            size = 22.dp,
         )
     }
 }
@@ -303,26 +302,22 @@ private fun EmptyDrawing() {
 @Composable
 private fun EmptyDrawingArt() {
     Canvas(Modifier.fillMaxSize()) {
-        val inset = 16.dp.toPx()
-        val corner = 4.dp.toPx()
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.92f),
-            topLeft = Offset(inset, inset),
-            size = Size(size.width - inset * 2f, size.height - inset * 2f),
-            cornerRadius = CornerRadius(corner, corner),
-        )
-        val left = inset + 28.dp.toPx()
-        val right = size.width - inset - 28.dp.toPx()
-        val mid = size.height / 2f
+        val left = 18.dp.toPx()
+        val right = size.width - 22.dp.toPx()
+        val mid = size.height * 0.46f
         val path = Path().apply {
-            moveTo(left, mid + 16.dp.toPx())
-            quadraticBezierTo(left + (right - left) * 0.35f, mid - 36.dp.toPx(), (left + right) / 2f, mid)
-            quadraticBezierTo(left + (right - left) * 0.75f, mid + 28.dp.toPx(), right, mid - 8.dp.toPx())
+            moveTo(left, mid + 18.dp.toPx())
+            quadraticBezierTo(left + (right - left) * 0.32f, mid - 42.dp.toPx(), (left + right) / 2f, mid - 4.dp.toPx())
+            quadraticBezierTo(left + (right - left) * 0.72f, mid + 34.dp.toPx(), right, mid - 16.dp.toPx())
         }
         drawPath(
             path,
-            color = LdColors.inkBlue,
-            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+            brush = Brush.linearGradient(
+                listOf(LdColors.inkBlue, LdColors.inkRed),
+                start = Offset(left, mid),
+                end = Offset(right, mid),
+            ),
+            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
     }
 }

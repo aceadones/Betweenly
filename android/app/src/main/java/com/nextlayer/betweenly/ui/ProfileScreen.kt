@@ -91,7 +91,11 @@ import kotlin.coroutines.cancellation.CancellationException
  * Replaces the old settings screen. Sharing switches stay on the Location tab.
  */
 @Composable
-fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
+fun ProfileScreen(
+    onPrivacy: () -> Unit,
+    onUnpaired: () -> Unit,
+    onSavedDrawings: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -103,7 +107,6 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
     var status by remember { mutableStateOf<String?>(null) }
     var statusError by remember { mutableStateOf(false) }
     val offer by UpdatePrompt.info.collectAsState()
-    var viewingTs by rememberSaveable { mutableStateOf(-1L) }
     val safety = remember(revision) { Store.safetyNumber(context) }
     val drawings = remember(drawRev) { DrawStore.list(context) }
     val animationsOn by Store.animationsFlow(context).collectAsState()
@@ -162,17 +165,6 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                 TextButton(onClick = { confirm = false }) {
                     Text(stringResource(R.string.pair_cancel), color = LdColors.onGlass)
                 }
-            },
-        )
-    }
-
-    if (viewingTs > 0L) {
-        DrawingViewer(
-            ts = viewingTs,
-            onClose = { viewingTs = -1L },
-            onDeleted = {
-                viewingTs = -1L
-                scope.launch { snackbar.showSnackbar(context.getString(R.string.draw_deleted)) }
             },
         )
     }
@@ -245,22 +237,34 @@ fun ProfileScreen(onPrivacy: () -> Unit, onUnpaired: () -> Unit) {
                 }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                SectionLabel(Lu.Image, stringResource(R.string.draw_saved_title))
-            }
-            if (drawings.isEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        stringResource(R.string.draw_none_saved),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = LdColors.colors.inkMuted,
-                    )
+                GlassGroup(
+                    Modifier
+                        .appear(1)
+                        .clickable(role = Role.Button, onClick = onSavedDrawings),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        LuIcon(Lu.Image, contentDescription = null, tint = surfaceInk(), size = 20.dp)
+                        Text(
+                            stringResource(R.string.draw_saved_title),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = surfaceInk(),
+                            maxLines = 1,
+                        )
+                        Text(
+                            stringResource(R.string.draw_saved_count, drawings.size),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = surfaceInk(muted = true),
+                        )
+                        LuIcon(Lu.ChevronRight, contentDescription = null, tint = surfaceInk(), size = 18.dp)
+                    }
                 }
-            }
-            itemsIndexed(drawings, key = { _, drawing -> drawing.ts }) { index, drawing ->
-                SavedThumb(
-                    drawing,
-                    modifier = if (index < 8) Modifier.appear(index) else Modifier,
-                ) { viewingTs = drawing.ts }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
                 GlassGroup(Modifier.appear(1)) {
@@ -485,153 +489,6 @@ private fun MyPhoto(name: String, onPicked: (ByteArray) -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 8.dp),
             )
-        }
-    }
-}
-
-@Composable
-private fun SavedThumb(drawing: SavedDrawing, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(drawing.ts) {
-        bitmap = withContext(Dispatchers.IO) { DrawStore.decode(drawing.file, 360) }
-    }
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(LdRadius.tile))
-            .clickable(onClick = onClick),
-    ) {
-        val shown = bitmap
-        if (shown != null && !shown.isRecycled) {
-            Image(
-                bitmap = shown.asImageBitmap(),
-                contentDescription = stringResource(R.string.draw_open),
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp,
-            ) {}
-        }
-    }
-}
-
-@Composable
-private fun DrawingViewer(
-    ts: Long,
-    onClose: () -> Unit,
-    onDeleted: () -> Unit,
-) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var missing by remember { mutableStateOf(false) }
-    var sending by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf<String?>(null) }
-    val title = remember(ts) {
-        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(ts))
-    }
-    LaunchedEffect(ts) {
-        val decoded = withContext(Dispatchers.IO) {
-            val file = DrawStore.list(context).firstOrNull { it.ts == ts }?.file
-            if (file == null) null else DrawStore.decode(file, 1600)
-        }
-        if (decoded == null) missing = true else bitmap = decoded
-    }
-    LaunchedEffect(missing) {
-        if (missing) onClose()
-    }
-    if (missing) return
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        PopupScale(visible = true, origin = TransformOrigin.Center) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = LdColors.colors.menu,
-            contentColor = LdColors.colors.ink,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ScreenHeader(title, onClose)
-                val shown = bitmap
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    if (shown != null && !shown.isRecycled) {
-                        Image(
-                            bitmap = shown.asImageBitmap(),
-                            contentDescription = stringResource(R.string.draw_open),
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit,
-                        )
-                    } else {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                    }
-                }
-                note?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    LdButton(
-                        text = stringResource(R.string.draw_delete),
-                        onClick = {
-                            scope.launch {
-                                val removed = withContext(Dispatchers.IO) {
-                                    val ok = DrawStore.delete(context, ts)
-                                    if (ok) DrawingWidget.updateAll(context)
-                                    ok
-                                }
-                                if (removed) onDeleted()
-                            }
-                        },
-                        style = LdButtonStyle.Tertiary,
-                        enabled = !sending,
-                        contentColor = MaterialTheme.colorScheme.error,
-                    )
-                    LdButton(
-                        text = stringResource(R.string.draw_send_again),
-                        loading = sending,
-                        onClick = {
-                            if (sending) return@LdButton
-                            sending = true
-                            note = null
-                            scope.launch {
-                                val ok = try {
-                                    withContext(Dispatchers.IO) {
-                                        val file = DrawStore.list(context).firstOrNull { it.ts == ts }?.file
-                                        if (file == null || !file.isFile || file.length() <= 0L || file.length() > 24L * 1024 * 1024) {
-                                            false
-                                        } else {
-                                            // DATA-FLOW: saved PNG, encrypted inside DrawSend, ciphertext to the relay.
-                                            DrawSend.send(context, file.readBytes())
-                                        }
-                                    }
-                                } catch (e: CancellationException) {
-                                    sending = false
-                                    throw e
-                                } catch (_: Exception) {
-                                    false
-                                }
-                                sending = false
-                                note = context.getString(if (ok) R.string.draw_sent else R.string.draw_send_failed)
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
         }
     }
 }

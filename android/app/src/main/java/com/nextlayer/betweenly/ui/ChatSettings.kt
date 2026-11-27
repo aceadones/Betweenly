@@ -7,6 +7,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -192,112 +194,230 @@ fun ChatBackground(onBack: () -> Unit) {
             busy = false
         }
     }
+    var wheel by remember { mutableStateOf<Boolean?>(null) }
     BackHandler(onBack = onBack)
     val swatch = if (shown.kind == "color") ChatTheme.wallpapers.getOrNull(shown.color) else null
     val dim = wallScrim(shown.kind, swatch)
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        AppBackground(Modifier.fillMaxSize())
-        ChatWallBackdrop(
-            wall = shown,
-            modifier = Modifier.fillMaxSize(),
-            previewJpeg = previewJpeg,
-        )
-        if (dim > 0f) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
+    val look = rememberBubbleLook()
+    Column(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
+        // Preview only. Wallpaper is the back layer here. Controls live in the column below,
+        // so no glass card or page fill is painted over the photo.
+        Box(
+            Modifier
                 .fillMaxWidth()
-                .heightIn(max = maxHeight * 0.62f)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(12.dp)
-                .darkGlass(RoundedCornerShape(LdRadius.card))
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .weight(0.42f)
+                .clip(RoundedCornerShape(bottomStart = LdRadius.card, bottomEnd = LdRadius.card)),
         ) {
-            CompositionLocalProvider(LocalOnGlass provides true) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ScreenHeader(stringResource(R.string.chat_background), onBack)
-            Text(
-                stringResource(R.string.chat_wall_preview),
-                style = MaterialTheme.typography.titleMedium,
-                color = LdColors.onGlassMuted,
+            AppBackground(Modifier.fillMaxSize())
+            ChatWallBackdrop(
+                wall = shown,
+                modifier = Modifier.fillMaxSize(),
+                previewJpeg = previewJpeg,
             )
-            WallRow(
-                label = stringResource(R.string.chat_wallpaper_default),
-                selected = shown.kind == "default",
-                enabled = !busy,
-                onClick = { publish("default", 0) { ChatWallpaperSync.publishDefault(context) } },
-            )
-            Text(
-                stringResource(R.string.chat_wallpaper),
-                style = MaterialTheme.typography.titleMedium,
-                color = LdColors.onGlass,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChatTheme.wallpapers.forEachIndexed { index, color ->
-                    val selected = shown.kind == "color" && shown.color == index
-                    val press = remember(index) { MutableInteractionSource() }
-                    Box(
-                        modifier = Modifier
-                            .pressScale(press)
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .border(
-                                width = if (selected) 2.dp else 0.dp,
-                                color = if (selected) LdColors.white else LdColors.clear,
-                                shape = CircleShape,
+            if (dim > 0f) {
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+            }
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ChatSampleBubble(
+                    stringResource(R.string.chat_theme_sample_theirs),
+                    outgoing = false,
+                    Modifier.align(Alignment.Start),
+                )
+                ChatSampleBubble(
+                    stringResource(R.string.chat_theme_sample_mine),
+                    outgoing = true,
+                    Modifier.align(Alignment.End),
+                )
+            }
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(Modifier.size(40.dp).darkGlass(CircleShape))
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .darkGlass(RoundedCornerShape(20.dp)),
+                )
+                Box(Modifier.size(40.dp).darkGlass(CircleShape))
+            }
+        }
+        Box(Modifier.weight(0.58f).fillMaxWidth()) {
+            AppBackground(Modifier.fillMaxSize())
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ScreenHeader(stringResource(R.string.chat_theme), onBack)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .darkGlass(RoundedCornerShape(LdRadius.card))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CompositionLocalProvider(LocalOnGlass provides true) {
+                        Text(
+                            stringResource(R.string.chat_theme_background),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LdColors.onGlass,
+                        )
+                        WallRow(
+                            label = stringResource(R.string.chat_wallpaper_default),
+                            selected = shown.kind == "default",
+                            enabled = !busy,
+                            onClick = { publish("default", 0) { ChatWallpaperSync.publishDefault(context) } },
+                        )
+                        Text(
+                            stringResource(R.string.chat_wallpaper),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LdColors.onGlass,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChatTheme.wallpapers.forEachIndexed { index, color ->
+                                val selected = shown.kind == "color" && shown.color == index
+                                val press = remember(index) { MutableInteractionSource() }
+                                Box(
+                                    modifier = Modifier
+                                        .pressScale(press)
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .border(
+                                            width = if (selected) 2.dp else 0.dp,
+                                            color = if (selected) LdColors.white else LdColors.clear,
+                                            shape = CircleShape,
+                                        )
+                                        .clickable(
+                                            enabled = !busy,
+                                            interactionSource = press,
+                                            indication = null,
+                                            onClick = {
+                                                publish("color", index) { ChatWallpaperSync.publishColor(context, index) }
+                                            },
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (selected) {
+                                        LuIcon(
+                                            Lu.Check,
+                                            contentDescription = stringResource(R.string.chat_wallpaper_color, index + 1),
+                                            tint = ChatTheme.onWallpaper(color),
+                                            size = 20.dp,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        WallRow(
+                            label = stringResource(R.string.chat_wallpaper_photo),
+                            selected = shown.kind == "image",
+                            enabled = !busy,
+                            onClick = {
+                                failed = false
+                                try {
+                                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                } catch (_: Exception) {
+                                    failed = true
+                                }
+                            },
+                        )
+                        if (busy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                                color = LdColors.onGlass,
                             )
-                            .clickable(
-                                enabled = !busy,
-                                interactionSource = press,
-                                indication = null,
-                                onClick = { publish("color", index) { ChatWallpaperSync.publishColor(context, index) } },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) {
-                            LuIcon(
-                                Lu.Check,
-                                contentDescription = stringResource(R.string.chat_wallpaper_color, index + 1),
-                                tint = ChatTheme.onWallpaper(color),
-                                size = 20.dp,
+                        }
+                        if (failed) {
+                            Text(
+                                stringResource(R.string.chat_wall_failed),
+                                color = Color(0xFFFFB4AB),
+                                style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }
                 }
-            }
-            WallRow(
-                label = stringResource(R.string.chat_wallpaper_photo),
-                selected = shown.kind == "image",
-                enabled = !busy,
-                onClick = {
-                    failed = false
-                    try {
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    } catch (_: Exception) {
-                        failed = true
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .darkGlass(RoundedCornerShape(LdRadius.card))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CompositionLocalProvider(LocalOnGlass provides true) {
+                        Text(
+                            stringResource(R.string.chat_theme_colors),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = LdColors.onGlass,
+                        )
+                        BubbleColorRow(
+                            title = stringResource(R.string.chat_theme_mine),
+                            builtin = LdColors.bubbleMineStart,
+                            selected = look.mine,
+                            glass = look.mineGlass,
+                            onColor = { Store.setChatBubbleMine(context, it) },
+                            onGlass = { Store.setChatBubbleMineGlass(context, it) },
+                            onCustom = { wheel = true },
+                        )
+                        BubbleColorRow(
+                            title = stringResource(R.string.chat_theme_theirs),
+                            builtin = Color(0xFF2A1218),
+                            selected = look.theirs,
+                            glass = look.theirsGlass,
+                            onColor = { Store.setChatBubbleTheirs(context, it) },
+                            onGlass = { Store.setChatBubbleTheirsGlass(context, it) },
+                            onCustom = { wheel = false },
+                        )
                     }
-                },
-            )
-            if (busy) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                    color = LdColors.onGlass,
-                )
+                }
             }
-            if (failed) {
-                Text(
-                    stringResource(R.string.chat_wall_failed),
-                    color = Color(0xFFFFB4AB),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            }
+        }
+    }
+    val picking = wheel
+    if (picking != null) {
+        val argb = if (picking) {
+            if (look.mine == 0) look.minePaint().toArgb() else look.mine
+        } else {
+            if (look.theirs == 0) look.theirsPaint().toArgb() else look.theirs
+        }
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { wheel = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            CompositionLocalProvider(LocalOnGlass provides true) {
+                Column(
+                    Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth()
+                        .darkGlass(RoundedCornerShape(LdRadius.card)),
+                ) {
+                    DrawWheelBody(
+                        colorArgb = argb,
+                        onColor = { value ->
+                            if (picking) Store.setChatBubbleMine(context, value) else Store.setChatBubbleTheirs(context, value)
+                        },
+                        onDone = { wheel = null },
+                    )
+                }
             }
         }
     }
@@ -305,13 +425,13 @@ fun ChatBackground(onBack: () -> Unit) {
 
 /**
  * How much black sits on a wallpaper so controls stay readable without hiding it.
- * Default (the sky) needs none. Photos stay visible at 18%.
+ * Default (the sky) needs none. Photos get a very light dim.
  */
 fun wallScrim(kind: String, swatch: Color?): Float = when (kind) {
-    "image" -> 0.18f
+    "image" -> 0.08f
     "color" -> {
         val tone = swatch?.let { it.red * 0.2126f + it.green * 0.7152f + it.blue * 0.0722f } ?: 0.5f
-        if (tone > 0.65f) 0.14f else 0.06f
+        if (tone > 0.72f) 0.06f else 0f
     }
     else -> 0f
 }
@@ -410,6 +530,102 @@ private fun WallPaint(token: WallToken) {
             )
         }
     }
+}
+
+@Composable
+private fun BubbleColorRow(
+    title: String,
+    builtin: Color,
+    selected: Int,
+    glass: Boolean,
+    onColor: (Int) -> Unit,
+    onGlass: (Boolean) -> Unit,
+    onCustom: () -> Unit,
+) {
+    val presets = listOf(
+        0,
+        LdColors.bubbleMineStart.toArgb(),
+        LdColors.inkBlue.toArgb(),
+        LdColors.inkPurple.toArgb(),
+        LdColors.inkGreen.toArgb(),
+        LdColors.navy.toArgb(),
+        Color.White.toArgb(),
+    )
+    val customOn = selected != 0 && selected !in presets
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = LdColors.onGlass)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            presets.forEach { argb ->
+                ColorDot(
+                    color = if (argb == 0) builtin else Color(argb),
+                    selected = selected == argb,
+                    label = title,
+                    onClick = { onColor(argb) },
+                )
+            }
+            ColorDot(
+                color = if (customOn) Color(selected) else LdColors.onGlass.copy(alpha = 0.2f),
+                selected = customOn,
+                label = stringResource(R.string.chat_theme_custom),
+                onClick = onCustom,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StyleChip(
+                label = stringResource(R.string.chat_bubble_glass),
+                selected = glass,
+                onClick = { onGlass(true) },
+            )
+            StyleChip(
+                label = stringResource(R.string.chat_bubble_solid),
+                selected = !glass,
+                onClick = { onGlass(false) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColorDot(color: Color, selected: Boolean, label: String, onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .pressScale(press)
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(if (selected) 2.dp else 1.dp, if (selected) LdColors.white else Color.White.copy(alpha = 0.35f), CircleShape)
+            .clickable(interactionSource = press, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (selected) {
+            LuIcon(Lu.Check, contentDescription = label, tint = contrastInk(color), size = 16.dp)
+        }
+    }
+}
+
+@Composable
+private fun StyleChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(LdRadius.chip)
+    Text(
+        label,
+        color = if (selected) LdColors.navy else LdColors.onGlass,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier
+            .pressScale(press)
+            .heightIn(min = 48.dp)
+            .clip(shape)
+            .background(if (selected) Color.White else Color.White.copy(alpha = 0.12f))
+            .clickable(interactionSource = press, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
 }
 
 @Composable

@@ -8,7 +8,11 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.shadow
@@ -72,6 +78,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -457,48 +465,21 @@ fun YouPage(name: String, onName: (String) -> Unit, onNext: () -> Unit) {
     val scroll = rememberScrollState()
     val bring = remember { BringIntoViewRequester() }
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-    val imeOpen = WindowInsets.ime.getBottom(density) > 0
-    var fieldFocused by remember { mutableStateOf(false) }
-    val artHeight by animateDpAsState(
-        targetValue = if (imeOpen) 72.dp else 168.dp,
-        animationSpec = Motion.tween(Motion.MED, Motion.easeOut),
-        label = "youArt",
-    )
-    LaunchedEffect(imeOpen, fieldFocused) {
-        if (imeOpen && fieldFocused) bring.bringIntoView()
-    }
-    // One scroll above the keyboard. The pager used to keep a weighted illustration
-    // and pad only the button, so the field collapsed under the IME.
     Column(
         Modifier
             .fillMaxSize()
             .clipToBounds()
-            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
+            .imePadding()
+            .navigationBarsPadding(),
     ) {
         Column(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(scroll)
-                .padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 8.dp),
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(artHeight)
-                    .clipToBounds(),
-                contentAlignment = Alignment.Center,
-            ) {
-                StoryAsset(
-                    res = R.drawable.onb_name,
-                    modifier = Modifier.fillMaxSize(),
-                    scale = ContentScale.Fit,
-                ) {
-                    IllustrationTile(Lu.User, Modifier.fillMaxSize())
-                }
-            }
             Text(
                 stringResource(R.string.onb_you_title),
                 style = LdType.PageTitle,
@@ -511,21 +492,15 @@ fun YouPage(name: String, onName: (String) -> Unit, onNext: () -> Unit) {
             )
             HeroPhoto(
                 name = name.ifBlank { stringResource(R.string.partner_fallback) },
-                avatar = if (imeOpen) 96.dp else 132.dp,
+                avatar = 112.dp,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
-            Text(
-                stringResource(R.string.photo_help),
-                style = MaterialTheme.typography.bodySmall,
-                color = LdColors.colors.inkMuted,
-            )
-            UnderlineNameField(
+            OutlinedNameField(
                 value = name,
                 onValue = onName,
                 label = stringResource(R.string.name_label),
                 onDone = { if (ready) onNext() },
                 onFocus = { focused ->
-                    fieldFocused = focused
                     if (focused) scope.launch { bring.bringIntoView() }
                 },
                 modifier = Modifier.bringIntoViewRequester(bring),
@@ -543,6 +518,51 @@ fun YouPage(name: String, onName: (String) -> Unit, onNext: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun OutlinedNameField(
+    value: String,
+    onValue: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    onDone: () -> Unit = {},
+    onFocus: (Boolean) -> Unit = {},
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(16.dp)
+    val border = if (focused) LdColors.primary else LdColors.navy.copy(alpha = 0.45f)
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = LdColors.colors.ink)
+        BasicTextField(
+            value = value,
+            onValueChange = onValue,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .onFocusChanged {
+                    focused = it.isFocused
+                    onFocus(it.isFocused)
+                }
+                .clip(shape)
+                .background(Color.White)
+                .border(1.5.dp, border, shape)
+                .padding(horizontal = 16.dp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = LdColors.navy),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            cursorBrush = SolidColor(LdColors.primary),
+            decorationBox = { inner ->
+                Box(Modifier.fillMaxWidth().heightIn(min = 56.dp), contentAlignment = Alignment.CenterStart) {
+                    inner()
+                }
+            },
         )
     }
 }

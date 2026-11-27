@@ -279,6 +279,15 @@ fun TrackScreen(onBack: () -> Unit) {
                         }
                     }
                 }
+                if (lat != null && lon != null) {
+                    PartnerMapActions(
+                        latitude = lat,
+                        longitude = lon,
+                        name = name,
+                        modifier = Modifier.fillMaxWidth(),
+                        hintColor = LdColors.onGlassMuted,
+                    )
+                }
                 RingButton(snackbar, Modifier.fillMaxWidth())
             }
         }

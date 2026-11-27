@@ -28,6 +28,9 @@ class PreparedMedia(
     val wave: String = "",
 )
 
+/** A keyboard image after the bytes have been sniffed. [kind] is sticker, gif, or photo. */
+class KeyboardImage(val kind: String, val mime: String, val name: String)
+
 /** Outcome of reading something the user picked or the keyboard inserted. */
 sealed class MediaResult {
     class Ok(val prepared: PreparedMedia) : MediaResult()
@@ -116,6 +119,20 @@ object ChatMedia {
             MediaResult.Failed
         } catch (_: OutOfMemoryError) {
             MediaResult.Failed
+        }
+    }
+
+    /**
+     * What a keyboard insert should be sent as. PNG and WebP stay stickers.
+     * GIF stays a GIF. Anything else is a photo and is re-encoded later.
+     */
+    fun keyboardImage(bytes: ByteArray, reportedMime: String): KeyboardImage {
+        val mime = sniff(bytes, reportedMime)
+        return when (mime) {
+            "image/gif" -> KeyboardImage("gif", "image/gif", "animation.gif")
+            "image/webp" -> KeyboardImage("sticker", "image/webp", "sticker.webp")
+            "image/png" -> KeyboardImage("sticker", "image/png", "sticker.png")
+            else -> KeyboardImage("photo", "image/jpeg", "photo.jpg")
         }
     }
 
@@ -348,9 +365,9 @@ object ChatMedia {
         }
         if (fromKeyboard && (png || webp)) {
             val outMime = if (webp) "image/webp" else "image/png"
-            val fallback = if (webp) "photo.webp" else "photo.png"
+            val fallback = if (webp) "sticker.webp" else "sticker.png"
             return MediaResult.Ok(
-                PreparedMedia(bytes, outMime, "photo", name.ifBlank { fallback }, w, h, thumbFromBytes(bytes)),
+                PreparedMedia(bytes, outMime, "sticker", name.ifBlank { fallback }, w, h, thumbFromBytes(bytes)),
             )
         }
         val encoded = transcodeBytes(bytes, MAX_EDGE, JPEG_QUALITY) ?: return MediaResult.Failed

@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-
 package com.nextlayer.betweenly.ui
 
 import android.Manifest
@@ -22,19 +20,19 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.content.ReceiveContentListener
-import androidx.compose.foundation.content.TransferableContent
-import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -110,6 +108,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -154,23 +153,18 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.roundToInt
 
 /**
- * The paired chat. The list stays on the tab. Opening the thread hides the
- * dock. [onOpenCamera] opens the in-app camera; the shot waits in
- * [ChatController.stageCapture] until this screen shows the preview.
+ * The only conversation. The Chat tab opens this full screen and the dock
+ * stays hidden. Back returns to Activity. [onOpenCamera] opens the in-app
+ * camera; the shot waits in [ChatController.stageCapture] until this screen
+ * shows the preview.
  */
 @Composable
 fun ChatScreen(
-    opened: Boolean,
-    onOpen: () -> Unit,
     onBack: () -> Unit,
     onOpenCamera: () -> Unit,
 ) {
     val context = LocalContext.current
     SideEffect { ChatController.install(context) }
-    if (!opened) {
-        ChatInbox(onOpen)
-        return
-    }
     DisposableEffect(Unit) {
         AppState.chatOpen = true
         ChatStore.markRead(context)
@@ -191,87 +185,6 @@ fun ChatScreen(
         )
         if (background) ChatBackground(onBack = { background = false })
         if (settings) ChatSettings(onBack = { settings = false })
-    }
-}
-
-/** One row for the only conversation. The dock stays visible on this page. */
-@Composable
-private fun ChatInbox(onOpen: () -> Unit) {
-    val context = LocalContext.current
-    val storeRev by Store.changes.collectAsState()
-    val chatRev by ChatStore.changes.collectAsState()
-    val unread by ChatStore.unreadCount.collectAsState()
-    var latest by remember { mutableStateOf<ChatMessage?>(null) }
-    LaunchedEffect(chatRev) {
-        latest = withContext(Dispatchers.IO) { ChatStore.list(context).firstOrNull() }
-    }
-    val name = remember(storeRev) {
-        Store.partnerName(context).ifBlank { context.getString(R.string.partner_fallback) }
-    }
-    val openLabel = stringResource(R.string.chat_open_thread)
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Text(
-            stringResource(R.string.tab_chat),
-            style = MaterialTheme.typography.headlineMedium,
-            color = LdColors.onGlass,
-        )
-        Spacer(Modifier.height(16.dp))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 72.dp)
-                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
-                .clip(RoundedCornerShape(LdRadius.card))
-                .clickable(onClick = onOpen)
-                .semantics { contentDescription = openLabel }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 48.dp)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    name,
-                    color = LdColors.onGlass,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val preview = latest
-                Text(
-                    if (preview == null) stringResource(R.string.chat_empty) else replySnippet(preview),
-                    color = LdColors.onGlassMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                val shown = latest
-                if (shown != null) {
-                    Text(
-                        chatTime(shown.ts),
-                        color = LdColors.onGlassMuted,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                if (unread > 0) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        unread.coerceAtMost(99).toString(),
-                        color = LdColors.white,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier
-                            .background(LdColors.primary, CircleShape)
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -318,6 +231,7 @@ private fun ChatBody(
     var rowRect by remember { mutableStateOf(Rect.Zero) }
     var bubbleRect by remember { mutableStateOf(Rect.Zero) }
     var viewingId by remember { mutableStateOf<String?>(null) }
+    var highlightId by remember { mutableStateOf<String?>(null) }
     var viewingRect by remember { mutableStateOf<Rect?>(null) }
     var composerPx by remember { mutableIntStateOf(0) }
     var headerPx by remember { mutableIntStateOf(0) }
@@ -453,36 +367,30 @@ private fun ChatBody(
         onOpenCamera()
     }
 
-    fun stageIncoming(uri: Uri, mime: String) {
-        scope.launch {
-            val read = withContext(Dispatchers.IO) {
-                ChatMedia.readNow(context, uri, ChatMedia.MAX_BYTES)
-            }
-            when (read) {
-                is ReadBytes.Ok -> {
-                    val image = mime.startsWith("image/") || mime.startsWith("video/") || mime.isBlank()
-                    appendDrafts(
-                        listOf(
-                            ChatDraft(
-                                key = System.nanoTime(),
-                                uri = null,
-                                bytes = read.data,
-                                mime = mime.ifBlank { "image/*" },
-                                name = if (image) "" else "file",
-                                video = mime.startsWith("video/"),
-                                asFile = !image,
-                                fromCamera = false,
-                            ),
-                        ),
-                    )
-                }
-                is ReadBytes.TooBig -> ChatController.note(R.string.chat_file_too_large)
-                is ReadBytes.Failed -> ChatController.note(R.string.chat_attach_failed)
-            }
+    fun stageKeyboard(bytes: ByteArray, mime: String) {
+        if (bytes.isEmpty() || bytes.size > ChatMedia.MAX_BYTES) {
+            ChatController.note(if (bytes.size > ChatMedia.MAX_BYTES) R.string.chat_file_too_large else R.string.chat_attach_failed)
+            return
         }
+        val image = ChatMedia.keyboardImage(bytes, mime)
+        appendDrafts(
+            listOf(
+                ChatDraft(
+                    key = System.nanoTime(),
+                    uri = null,
+                    bytes = bytes,
+                    mime = image.mime,
+                    name = image.name,
+                    video = false,
+                    asFile = false,
+                    fromCamera = false,
+                    kind = if (image.kind == "photo") null else image.kind,
+                ),
+            ),
+        )
     }
 
-    fun startVoice() {
+    fun startVoice(locked: Boolean = false) {
         if (recording) return
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             micPerm.launch(Manifest.permission.RECORD_AUDIO)
@@ -493,7 +401,7 @@ private fun ChatBody(
             return
         }
         recording = true
-        recordLocked = false
+        recordLocked = locked
         recordCancel = false
         recordMs = 0
         levels = emptyList()
@@ -533,7 +441,7 @@ private fun ChatBody(
         ChatController.sendDrafts(
             context,
             items.map { item ->
-                OutgoingDraft(item.uri, item.bytes, item.mime, item.name, item.video, item.asFile)
+                OutgoingDraft(item.uri, item.bytes, item.mime, item.name, item.video, item.asFile, item.kind)
             },
             caption.trim(),
             replyId,
@@ -742,6 +650,8 @@ private fun ChatBody(
             }
             activitiesOn -> activitiesOn = false
             stickersOn -> stickersOn = false
+            attachOpen -> attachOpen = false
+            overflowOpen -> overflowOpen = false
             recording -> cancelVoice()
             else -> onBack()
         }
@@ -757,6 +667,9 @@ private fun ChatBody(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // Layers, back to front: shared wallpaper, then a very light dim on photos
+            // and pale colors. Header, messages, and the composer sit on top. Nothing
+            // else paints an opaque plate over the wallpaper.
             ChatWallBackdrop(wall, Modifier.fillMaxSize())
             val wallDim = wallScrim(
                 wall.kind,
@@ -771,23 +684,24 @@ private fun ChatBody(
                         .align(Alignment.TopCenter)
                         .zIndex(1f)
                         .onSizeChanged { headerPx = it.height }
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    RingIconButton(
+                        onClick = onBack,
+                        icon = Lu.ArrowLeft,
+                        description = stringResource(R.string.back),
+                    )
+                    Spacer(Modifier.width(8.dp))
                     Row(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .ldGlass(RoundedCornerShape(LdRadius.chip), solid = true)
+                            .darkGlass(RoundedCornerShape(LdRadius.chip))
                             .padding(start = 6.dp, end = 14.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        MotionIconButton(
-                            onClick = onBack,
-                            icon = Lu.ArrowLeft,
-                            description = stringResource(R.string.back),
-                        )
                         RoundAvatar(storeRev, { Store.partnerAvatar(context) }, name, 36.dp)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
@@ -811,7 +725,7 @@ private fun ChatBody(
                     }
                     Spacer(Modifier.width(8.dp))
                     Box {
-                        GlassIconButton(
+                        RingIconButton(
                             onClick = {
                                 overflowOpen = !overflowOpen
                                 if (overflowOpen) {
@@ -821,21 +735,24 @@ private fun ChatBody(
                             },
                             icon = Lu.EllipsisVertical,
                             description = stringResource(R.string.chat_menu),
-                            solid = true,
                         )
                         AnchoredPopup(
                             visible = overflowOpen,
                             above = false,
+                            alignEnd = true,
                             origin = TransformOrigin(1f, 0f),
                             onDismiss = { overflowOpen = false },
                         ) {
                             Column(
                                 Modifier
-                                    .widthIn(min = 220.dp, max = 300.dp)
-                                    .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
+                                    .width(220.dp)
+                                    .darkGlass(
+                                        RoundedCornerShape(LdRadius.card),
+                                        fill = LdColors.glassFill.copy(alpha = 0.96f),
+                                    )
                                     .padding(vertical = 8.dp),
                             ) {
-                                MenuLine(Lu.Image, stringResource(R.string.chat_background)) {
+                                MenuLine(Lu.Palette, stringResource(R.string.chat_theme)) {
                                     overflowOpen = false
                                     onOpenBackground()
                                 }
@@ -913,7 +830,28 @@ private fun ChatBody(
                                                     onToggleReaction = { emoji ->
                                                         ChatController.react(context, message.id, emoji)
                                                     },
-                                                    quote = quoteFor(message, messages),
+                                                    quoted = quotedMessage(message, messages),
+                                                    quoteMissing = ChatStore.normalizeId(message.json.optString("re")) != null &&
+                                                        quotedMessage(message, messages) == null,
+                                                    onOpenQuote = {
+                                                        val target = ChatStore.normalizeId(message.json.optString("re"))
+                                                            ?: return@ChatBubble
+                                                        val index = rows.indexOfFirst {
+                                                            it is ChatRow.Msg && it.message.id == target
+                                                        }
+                                                        if (index < 0) return@ChatBubble
+                                                        scope.launch {
+                                                            if (Motion.enabled) {
+                                                                listState.animateScrollToItem(index)
+                                                            } else {
+                                                                listState.scrollToItem(index)
+                                                            }
+                                                            highlightId = target
+                                                            delay(if (Motion.enabled) 900 else 400)
+                                                            if (highlightId == target) highlightId = null
+                                                        }
+                                                    },
+                                                    lit = message.id == highlightId,
                                                     onReply = {
                                                         replyId = message.id
                                                         ChatController.armReply(message.id)
@@ -946,14 +884,10 @@ private fun ChatBody(
                     ) {
                         if (stickersOn && !recording && voiceDraft == null) {
                             ChatStickerPanel(
-                                messages = messages,
                                 onGif = { bytes ->
                                     ChatController.sendKind(context, bytes, "image/gif", "gif", "gif.gif", replyId)
                                     replyId = null
-                                },
-                                onSticker = { bytes, mime ->
-                                    ChatController.sendKind(context, bytes, mime, "sticker", "sticker.png", replyId)
-                                    replyId = null
+                                    stickersOn = false
                                 },
                                 onClose = { stickersOn = false },
                             )
@@ -990,7 +924,10 @@ private fun ChatBody(
                                     scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
                                 }
                             },
-                            onCamera = { openCamera() },
+                            onCamera = {
+                                if (recording) cancelVoice()
+                                openCamera()
+                            },
                             onStickers = {
                                 val next = !stickersOn
                                 stickersOn = next
@@ -1014,11 +951,12 @@ private fun ChatBody(
                                     scope.launch { snackbar.showSnackbar(context.getString(R.string.chat_attach_failed)) }
                                 }
                             },
+                            onVoice = { startVoice(locked = true) },
                             onCancelReply = {
                                 replyId = null
                                 ChatController.armReply(null)
                             },
-                            onImage = { uri, mime -> stageIncoming(uri, mime) },
+                            onImage = { bytes, mime -> stageKeyboard(bytes, mime) },
                             onMicDown = { startVoice() },
                             onMicDrag = { recordCancel = it },
                             onMicUp = { tap, cancelled ->
@@ -1336,34 +1274,25 @@ private fun LiftedMessage(
 ) {
     val density = LocalDensity.current
     val gap = with(density) { 8.dp.toPx() }
-    val margin = gap
+    val margin = with(density) { 12.dp.toPx() }
+    val insetTop = WindowInsets.safeDrawing.getTop(density).let { value ->
+        if (value > 0) value else with(density) { 28.dp.roundToPx() }
+    }
+    val insetBottom = WindowInsets.safeDrawing.getBottom(density).let { value ->
+        if (value > 0) value else with(density) { 48.dp.roundToPx() }
+    }
     val rowTop = rowRect.top - root.y
     val rowH = rowRect.height.coerceAtLeast(1f)
     val rowX = rowRect.left - root.x
-    var topGoal by remember(rowTop) { mutableFloatStateOf(rowTop) }
-    var visGoal by remember(rowH) { mutableFloatStateOf(rowH) }
-    val top = remember(rowTop) { Animatable(rowTop) }
-    val vis = remember(rowH) { Animatable(rowH) }
-    LaunchedEffect(topGoal) {
-        top.animateTo(topGoal, Motion.spring(dampingRatio = 0.8f, stiffness = 400f))
-    }
-    LaunchedEffect(visGoal) {
-        vis.animateTo(visGoal, Motion.spring(dampingRatio = 0.8f, stiffness = 400f))
-    }
-    val holder = remember { floatArrayOf(rowTop, rowH) }
     val outgoing = message.outgoing
     val cardOrigin = if (outgoing) TransformOrigin(1f, 0f) else TransformOrigin(0f, 0f)
-    val cropped = vis.value < rowH - 1f
     Layout(
         modifier = Modifier.fillMaxSize(),
         content = {
             Box(
                 Modifier
                     .width(with(density) { rowRect.width.toDp() })
-                    .height(with(density) { vis.value.toDp().coerceAtLeast(1.dp) })
                     .graphicsLayer {
-                        scaleX = 1.03f
-                        scaleY = 1.03f
                         shadowElevation = 18.dp.toPx()
                         shape = RoundedCornerShape(LdRadius.tile)
                         clip = false
@@ -1373,7 +1302,7 @@ private fun LiftedMessage(
                     .clipToBounds()
                     .drawWithContent {
                         drawContent()
-                        if (cropped) {
+                        if (size.height < rowH - 1f) {
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     0f to Color.Black,
@@ -1398,7 +1327,9 @@ private fun LiftedMessage(
                         onRetryDownload = {},
                         onToggleReaction = {},
                         modifier = Modifier.fillMaxWidth(),
-                        quote = quoteFor(message, messages),
+                        quoted = quotedMessage(message, messages),
+                        quoteMissing = ChatStore.normalizeId(message.json.optString("re")) != null &&
+                            quotedMessage(message, messages) == null,
                         lit = true,
                     )
                 }
@@ -1428,25 +1359,39 @@ private fun LiftedMessage(
         },
     ) { measurables, constraints ->
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val bubble = measurables[0].measure(loose)
         val pill = measurables.getOrNull(1)?.measure(loose)
         val card = measurables.getOrNull(2)?.measure(loose)
         val pillH = (pill?.height ?: 0).toFloat()
         val cardH = (card?.height ?: 0).toFloat()
-        val free = (constraints.maxHeight - pillH - cardH - gap * 2f - margin * 2f).coerceAtLeast(1f)
-        val visTarget = rowH.coerceAtMost(free)
-        val minTop = margin + pillH + gap
-        val maxTop = (constraints.maxHeight - margin - cardH - gap - visTarget).coerceAtLeast(minTop)
-        holder[0] = rowTop.coerceIn(minTop, maxTop)
-        holder[1] = visTarget
+        val topLimit = insetTop + margin
+        val bottomLimit = (constraints.maxHeight - insetBottom - margin).coerceAtLeast(topLimit + 1f)
+        val chrome = pillH + cardH + gap * 2f
+        val visH = rowH.coerceAtMost((bottomLimit - topLimit - chrome).coerceAtLeast(1f))
+        val bubble = measurables[0].measure(
+            loose.copy(maxHeight = visH.roundToInt().coerceAtLeast(1)),
+        )
+        val spaceBelow = bottomLimit - (rowTop + visH)
+        val flip = cardH > 0f && spaceBelow < cardH + gap
+        val groupH = pillH + gap + visH + gap + cardH
+        val naturalTop = if (flip) rowTop - (pillH + cardH + gap * 2f) else rowTop - pillH - gap
+        val maxTop = (bottomLimit - groupH).coerceAtLeast(topLimit)
+        val groupTop = naturalTop.coerceIn(topLimit, maxTop)
+        val afterPill = groupTop + pillH + gap
+        val bubbleY = if (flip) afterPill + cardH + gap else afterPill
+        val cardY = if (flip) afterPill else afterPill + visH + gap
+        fun clampY(y: Float, height: Int): Int {
+            val min = topLimit.toInt()
+            val max = (bottomLimit - height).toInt().coerceAtLeast(min)
+            return y.roundToInt().coerceIn(min, max)
+        }
         layout(constraints.maxWidth, constraints.maxHeight) {
-            val y = top.value
-            bubble.place(rowX.roundToInt(), y.roundToInt())
+            val maxBubbleX = (constraints.maxWidth - bubble.width).coerceAtLeast(0)
+            bubble.place(rowX.roundToInt().coerceIn(0, maxBubbleX), clampY(bubbleY, bubble.height))
             if (pill != null) {
                 val center = (bubbleRect.left + bubbleRect.right) / 2f - root.x
                 val maxX = (constraints.maxWidth - pill.width - gap).toInt().coerceAtLeast(0)
                 val x = (center - pill.width / 2f).roundToInt().coerceIn(0, maxX)
-                pill.place(x, (y - gap - pill.height).roundToInt())
+                pill.place(x, clampY(groupTop, pill.height))
             }
             if (card != null) {
                 val left = bubbleRect.left - root.x
@@ -1454,13 +1399,9 @@ private fun LiftedMessage(
                 val maxX = (constraints.maxWidth - card.width - gap).toInt().coerceAtLeast(0)
                 val preferred = if (outgoing) right - card.width else left
                 val x = preferred.roundToInt().coerceIn(0, maxX)
-                card.place(x, (y + vis.value + gap).roundToInt())
+                card.place(x, clampY(cardY, card.height))
             }
         }
-    }
-    SideEffect {
-        if (topGoal != holder[0]) topGoal = holder[0]
-        if (visGoal != holder[1]) visGoal = holder[1]
     }
 }
 
@@ -1542,8 +1483,9 @@ private fun Composer(
     onStickers: () -> Unit,
     onActivities: () -> Unit,
     onFile: () -> Unit,
+    onVoice: () -> Unit,
     onCancelReply: () -> Unit,
-    onImage: (Uri, String) -> Unit,
+    onImage: (ByteArray, String) -> Unit,
     onMicDown: () -> Unit,
     onMicDrag: (Boolean) -> Unit,
     onMicUp: (Boolean, Boolean) -> Unit,
@@ -1553,141 +1495,262 @@ private fun Composer(
     val down = rememberUpdatedState(onMicDown)
     val drag = rememberUpdatedState(onMicDrag)
     val up = rememberUpdatedState(onMicUp)
-    val tools = !recording && voiceDraft == null
-    val showSend = text.isNotBlank() || voiceDraft != null
+    val showTools = !recording && voiceDraft == null && text.isBlank()
+    val showSend = !recording && (text.isNotBlank() || voiceDraft != null)
+    val showPlus = !recording && voiceDraft == null
+    // The scaffold's safe-drawing and ime insets keep this row above the gesture bar and the keyboard.
     Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp).fillMaxWidth()) {
+        if (quoting != null && !recording) {
+            QuoteCard(
+                quoted = quoting,
+                missing = false,
+                outgoing = false,
+                onClose = onCancelReply,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            )
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-            if (tools) {
-                GlassIconButton(
-                    onClick = onCamera,
-                    icon = Lu.Camera,
-                    description = stringResource(R.string.chat_camera),
-                    solid = true,
-                )
-            }
-            Column(
+            FilledCameraButton(onCamera)
+            Row(
                 Modifier
                     .weight(1f)
-                    .padding(horizontal = 4.dp)
-                    .ldGlass(RoundedCornerShape(ChatTheme.composerRadius), solid = true),
+                    .padding(start = 8.dp)
+                    .heightIn(min = 48.dp)
+                    .darkGlass(RoundedCornerShape(24.dp)),
+                verticalAlignment = Alignment.Bottom,
             ) {
-                if (quoting != null && tools) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.chat_replying),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = LdColors.onGlassMuted,
-                            )
-                            Text(
-                                replySnippet(quoting),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = LdColors.onGlass,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        }
-                        MotionIconButton(
-                            onClick = onCancelReply,
-                            icon = Lu.X,
-                            description = stringResource(R.string.chat_reply_cancel),
+                Box(
+                    Modifier.weight(1f).heightIn(min = 48.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    when {
+                        recording -> VoiceRecordBar(recordMs, levels, recordCancel, recordLocked)
+                        voiceDraft != null -> VoiceDraftBar(voiceDraft)
+                        else -> ChatInputField(
+                            text = text,
+                            hint = stringResource(R.string.chat_hint),
+                            onText = onText,
+                            onKeyboardSend = onKeyboardSend,
+                            onImage = onImage,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }
-                when {
-                    recording -> VoiceRecordBar(recordMs, levels, recordCancel, recordLocked)
-                    voiceDraft != null -> VoiceDraftBar(voiceDraft)
-                    else -> ChatInputField(
-                        text = text,
-                        hint = stringResource(R.string.chat_hint),
-                        onText = onText,
-                        onKeyboardSend = onKeyboardSend,
-                        onImage = onImage,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                    )
-                }
-            }
-            if (tools) {
-                MotionIconButton(onGallery, Lu.Image, stringResource(R.string.chat_gallery))
-                MotionIconButton(onStickers, Lu.Smile, stringResource(R.string.chat_tab_stickers))
-            }
-            if (voiceDraft != null) {
-                MotionIconButton(onDeleteVoice, Lu.Trash2, stringResource(R.string.chat_voice_delete))
-            }
-            if (showSend) {
-                MotionIconButton(
-                    onClick = if (voiceDraft != null) onSendVoice else onSend,
-                    icon = Lu.Send,
-                    description = stringResource(R.string.chat_send),
-                )
-            } else {
-                val micLabel = stringResource(
-                    if (recordLocked) R.string.chat_voice_stop else R.string.chat_mic,
-                )
-                Box(
-                    Modifier
-                        .size(48.dp)
-                        .semantics { contentDescription = micLabel }
-                        .pointerInput(Unit) {
-                            val cancelPx = 72.dp.toPx()
-                            awaitEachGesture {
-                                val press = awaitFirstDown()
-                                val originX = press.position.x
-                                val started = System.currentTimeMillis()
-                                down.value()
-                                var cancelled = false
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == press.id } ?: break
-                                    if (!change.pressed) break
-                                    cancelled = change.position.x - originX < -cancelPx
-                                    drag.value(cancelled)
-                                    change.consume()
-                                }
-                                val tap = System.currentTimeMillis() - started < 280L
-                                up.value(tap, cancelled)
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                AnimatedVisibility(
+                    visible = showTools,
+                    enter = fadeIn(Motion.tween(180, Motion.easeOut)) + expandHorizontally(
+                        animationSpec = Motion.tween(220, Motion.easeInOut),
+                        expandFrom = Alignment.End,
+                    ),
+                    exit = fadeOut(Motion.tween(140, Motion.easeOut)) + shrinkHorizontally(
+                        animationSpec = Motion.tween(180, Motion.easeInOut),
+                        shrinkTowards = Alignment.End,
+                    ),
                 ) {
-                    LuIcon(
-                        if (recordLocked) Lu.Pause else Lu.Mic,
-                        contentDescription = micLabel,
-                        tint = LdColors.onGlass,
-                    )
+                    Row(Modifier.padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PillIcon(onGallery, Lu.Image, stringResource(R.string.chat_gallery))
+                        PillIcon(onStickers, Lu.Smile, stringResource(R.string.chat_sticker_gif))
+                    }
                 }
-            }
-            if (tools) {
-                Box {
-                    MotionIconButton(
-                        onClick = onToggleAttach,
-                        icon = Lu.Plus,
-                        description = stringResource(R.string.chat_attach),
-                        modifier = Modifier.graphicsLayer { rotationZ = turn },
-                    )
-                    AnchoredPopup(
-                        visible = attachOpen,
-                        above = true,
-                        origin = TransformOrigin(1f, 1f),
-                        onDismiss = onDismissAttach,
-                    ) {
-                        Column(
-                            Modifier
-                                .widthIn(min = 180.dp)
-                                .ldGlass(RoundedCornerShape(LdRadius.card), solid = true)
-                                .padding(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                if (voiceDraft != null) {
+                    Box(Modifier.padding(bottom = 4.dp)) {
+                        PillIcon(onDeleteVoice, Lu.Trash2, stringResource(R.string.chat_voice_delete))
+                    }
+                } else if (showPlus) {
+                    Box(Modifier.padding(bottom = 4.dp).graphicsLayer { rotationZ = turn }) {
+                        PillIcon(onToggleAttach, Lu.CirclePlus, stringResource(R.string.chat_attach))
+                        AnchoredPopup(
+                            visible = attachOpen,
+                            above = true,
+                            alignEnd = true,
+                            origin = TransformOrigin(1f, 1f),
+                            onDismiss = onDismissAttach,
                         ) {
-                            AttachTile(0, Lu.Pencil, stringResource(R.string.chat_activities), onActivities)
-                            AttachTile(1, Lu.FileText, stringResource(R.string.chat_file), onFile)
+                            PlusMenu(
+                                onGallery = onGallery,
+                                onStickers = onStickers,
+                                onVoice = onVoice,
+                                onActivities = onActivities,
+                                onFile = onFile,
+                            )
                         }
                     }
                 }
+                MicOrSend(
+                    send = showSend,
+                    locked = recordLocked,
+                    onSend = if (voiceDraft != null) onSendVoice else onSend,
+                    onDown = down.value,
+                    onDrag = drag.value,
+                    onUp = up.value,
+                    modifier = Modifier.padding(bottom = 4.dp, end = 4.dp),
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun FilledCameraButton(onClick: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .padding(bottom = 2.dp)
+            .pressScale(press)
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(LdColors.primary)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        LuIcon(
+            Lu.Camera,
+            contentDescription = stringResource(R.string.chat_camera),
+            tint = Color.White,
+            size = 24.dp,
+        )
+    }
+}
+
+@Composable
+private fun PillIcon(onClick: () -> Unit, icon: ImageVector, description: String) {
+    val press = remember { MutableInteractionSource() }
+    Box(
+        Modifier
+            .pressScale(press)
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        LuIcon(icon, contentDescription = description, tint = LdColors.onGlass, size = 24.dp)
+    }
+}
+
+@Composable
+private fun MicOrSend(
+    send: Boolean,
+    locked: Boolean,
+    onSend: () -> Unit,
+    onDown: () -> Unit,
+    onDrag: (Boolean) -> Unit,
+    onUp: (Boolean, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val bg by animateColorAsState(
+        targetValue = if (send) LdColors.primary else Color.Transparent,
+        animationSpec = Motion.tween(160, Motion.easeOut),
+        label = "micSend",
+    )
+    if (send) {
+        val press = remember { MutableInteractionSource() }
+        Box(
+            modifier
+                .pressScale(press)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(bg)
+                .clickable(
+                    interactionSource = press,
+                    indication = LocalIndication.current,
+                    role = Role.Button,
+                    onClick = onSend,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            LuIcon(
+                Lu.Send,
+                contentDescription = stringResource(R.string.chat_send),
+                tint = Color.White,
+                size = 22.dp,
+            )
+        }
+    } else {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            MicHold(locked, onDown, onDrag, onUp)
+        }
+    }
+}
+
+@Composable
+private fun MicHold(
+    locked: Boolean,
+    onDown: () -> Unit,
+    onDrag: (Boolean) -> Unit,
+    onUp: (Boolean, Boolean) -> Unit,
+) {
+    val down = rememberUpdatedState(onDown)
+    val drag = rememberUpdatedState(onDrag)
+    val up = rememberUpdatedState(onUp)
+    val micLabel = stringResource(if (locked) R.string.chat_voice_stop else R.string.chat_mic)
+    Box(
+        Modifier
+            .size(40.dp)
+            .semantics { contentDescription = micLabel }
+            .pointerInput(Unit) {
+                val cancelPx = 72.dp.toPx()
+                awaitEachGesture {
+                    val press = awaitFirstDown()
+                    val originX = press.position.x
+                    val started = System.currentTimeMillis()
+                    down.value()
+                    var cancelled = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == press.id } ?: break
+                        if (!change.pressed) break
+                        cancelled = change.position.x - originX < -cancelPx
+                        drag.value(cancelled)
+                        change.consume()
+                    }
+                    val tap = System.currentTimeMillis() - started < 280L
+                    up.value(tap, cancelled)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        LuIcon(
+            if (locked) Lu.Pause else Lu.Mic,
+            contentDescription = micLabel,
+            tint = LdColors.onGlass,
+            size = 24.dp,
+        )
+    }
+}
+
+@Composable
+private fun PlusMenu(
+    onGallery: () -> Unit,
+    onStickers: () -> Unit,
+    onVoice: () -> Unit,
+    onActivities: () -> Unit,
+    onFile: () -> Unit,
+) {
+    Column(
+        Modifier
+            .width(220.dp)
+            .darkGlass(
+                RoundedCornerShape(LdRadius.card),
+                fill = LdColors.glassFill.copy(alpha = 0.96f),
+            )
+            .padding(6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        AttachTile(0, Lu.Smile, stringResource(R.string.chat_sticker_gif), onStickers)
+        AttachTile(1, Lu.Mic, stringResource(R.string.chat_voice_cd), onVoice)
+        AttachTile(2, Lu.Image, stringResource(R.string.chat_gallery), onGallery)
+        AttachTile(3, Lu.Pencil, stringResource(R.string.chat_activities), onActivities)
+        AttachTile(4, Lu.FileText, stringResource(R.string.chat_file), onFile)
     }
 }
 
@@ -1766,6 +1829,7 @@ private fun Stagger(index: Int, content: @Composable () -> Unit) {
 private fun AnchoredPopup(
     visible: Boolean,
     above: Boolean,
+    alignEnd: Boolean = false,
     origin: TransformOrigin,
     onDismiss: () -> Unit,
     content: @Composable () -> Unit,
@@ -1790,15 +1854,22 @@ private fun AnchoredPopup(
                 layoutDirection: LayoutDirection,
                 popupContentSize: IntSize,
             ): IntOffset {
-                val x = if (above) anchorBounds.left else anchorBounds.right - popupContentSize.width
-                val y = if (above) {
-                    anchorBounds.top - popupContentSize.height - gap
+                val preferredX = if (alignEnd || !above) {
+                    anchorBounds.right - popupContentSize.width
                 } else {
-                    anchorBounds.bottom + gap
+                    anchorBounds.left
+                }
+                val aboveY = anchorBounds.top - popupContentSize.height - gap
+                val belowY = anchorBounds.bottom + gap
+                val y = if (above) {
+                    if (aboveY >= gap) aboveY else belowY
+                } else {
+                    val fitsBelow = belowY + popupContentSize.height <= windowSize.height - gap
+                    if (fitsBelow) belowY else aboveY
                 }
                 val maxX = (windowSize.width - popupContentSize.width - gap).coerceAtLeast(0)
                 val maxY = (windowSize.height - popupContentSize.height - gap).coerceAtLeast(0)
-                return IntOffset(x.coerceIn(0, maxX), y.coerceIn(0, maxY))
+                return IntOffset(preferredX.coerceIn(0, maxX), y.coerceIn(0, maxY))
             }
         },
         onDismissRequest = onDismiss,
@@ -1814,21 +1885,35 @@ private fun AnchoredPopup(
 }
 
 @Composable
-private fun MotionIconButton(
+private fun RingIconButton(
     onClick: () -> Unit,
     icon: ImageVector,
     description: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
 ) {
     val press = remember { MutableInteractionSource() }
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        interactionSource = press,
-        modifier = modifier.pressScale(press),
+    Box(
+        Modifier
+            .pressScale(press)
+            .size(48.dp)
+            .darkGlass(CircleShape)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = press,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        LuIcon(icon, contentDescription = description, tint = LdColors.onGlass)
+        Box(
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            LuIcon(icon, contentDescription = description, tint = LdColors.onGlass, size = 20.dp)
+        }
     }
 }
 
@@ -1862,11 +1947,9 @@ private fun rowGap(rows: List<ChatRow>, index: Int): Dp {
     return if (left.outgoing == right.outgoing) 2.dp else 10.dp
 }
 
-@Composable
-private fun quoteFor(message: ChatMessage, all: List<ChatMessage>): String? {
+private fun quotedMessage(message: ChatMessage, all: List<ChatMessage>): ChatMessage? {
     val id = ChatStore.normalizeId(message.json.optString("re")) ?: return null
-    val found = all.firstOrNull { it.id == id }
-    return if (found == null) stringResource(R.string.chat_reply_gone) else replySnippet(found)
+    return all.firstOrNull { it.id == id }
 }
 
 private fun copyable(message: ChatMessage): String? {

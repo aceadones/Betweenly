@@ -26,7 +26,7 @@ import kotlin.math.min
  * partner's latest drawing, then this phone's newest save, then a short hint.
  * RemoteViews only, no Glance.
  *
- * Tapping opens [MainActivity] on the Activity tab (`open` = `activity`).
+ * Tapping opens the Drawing Studio (`open` = `draw`).
  * The provider period is 30 minutes. [updateAll] runs again when either layer changes.
  * Nothing here polls.
  *
@@ -53,8 +53,8 @@ class DrawingWidget : AppWidgetProvider() {
     companion object {
         private const val REQUEST_OPEN = 21
 
-        /** Pixel budget for the bitmap handed to the launcher. 1.5 MB of ARGB. */
-        private const val MAX_BITMAP_BYTES = 1_500_000
+        /** Pixel budget for the bitmap handed to the launcher. About 1 MB of ARGB. */
+        private const val MAX_BITMAP_BYTES = 1_000_000
 
         /**
          * Bitmaps handed to the launcher on the last [updateAll]. RemoteViews may share
@@ -138,8 +138,20 @@ class DrawingWidget : AppWidgetProvider() {
 
         private fun pixelSize(context: Context, options: Bundle): Triple<Int, Int, Float> {
             val density = context.resources.displayMetrics.density.coerceAtLeast(1f)
-            val wDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0).takeIf { it > 0 } ?: 110
-            val hDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0).takeIf { it > 0 } ?: 110
+            fun bound(minKey: String, maxKey: String): Int {
+                val minDp = options.getInt(minKey, 0).takeIf { it > 0 } ?: 110
+                val maxDp = options.getInt(maxKey, 0).takeIf { it > 0 } ?: minDp
+                return maxOf(minDp, maxDp).coerceIn(110, 500)
+            }
+            // The image sits inside a 10dp margin, so the bitmap matches that box.
+            val wDp = (bound(
+                AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH,
+                AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,
+            ) - 20).coerceAtLeast(90)
+            val hDp = (bound(
+                AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,
+                AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,
+            ) - 20).coerceAtLeast(90)
             var width = (wDp * density).toInt().coerceAtLeast(48)
             var height = (hDp * density).toInt().coerceAtLeast(48)
             while (width.toLong() * height.toLong() * 4L > MAX_BITMAP_BYTES && (width > 48 || height > 48)) {
@@ -147,7 +159,7 @@ class DrawingWidget : AppWidgetProvider() {
                 height = (height * 9 / 10).coerceAtLeast(48)
             }
             val fullW = (wDp * density).coerceAtLeast(1f)
-            val radius = 24f * density * (width / fullW)
+            val radius = 22f * density * (width / fullW)
             return Triple(width, height, radius)
         }
 
@@ -205,7 +217,7 @@ class DrawingWidget : AppWidgetProvider() {
 
         private fun openActivity(context: Context): PendingIntent {
             val intent = Intent(context, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_OPEN, "activity")
+                .putExtra(MainActivity.EXTRA_OPEN, "draw")
                 .addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or

@@ -28,6 +28,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -73,10 +75,12 @@ object LdColors {
     val navy = Color(0xFF1A0A12)
     val heart = Color(0xFFFF4E4D)
     /** White at 92% and 70%. Both clear 4.5:1 on [glassFill] over the lightest blush. */
-    val onGlass = Color.White.copy(alpha = 0.92f)
-    val onGlassMuted = Color.White.copy(alpha = 0.70f)
+    val onGlass: Color get() = if (glassLight) Color(0xFF2A0F18) else Color.White.copy(alpha = 0.92f)
+    val onGlassMuted: Color get() = if (glassLight) Color(0xFF5E3A46) else Color.White.copy(alpha = 0.70f)
+    /** True in light mode: glass is a light frosted fill with dark text. Set by [BetweenlyTheme]. */
+    var glassLight by androidx.compose.runtime.mutableStateOf(false)
     /** Near-black wine at 78%. Dialogs use this; cards use [darkGlass]. */
-    val glassFill = Color(0xC70C060A)
+    val glassFill: Color get() = if (glassLight) Color(0xD9FFFFFF) else Color(0xC70C060A)
     val success = Color(0xFF34C759)
     val white = Color(0xFFFFFFFF)
     val black = Color(0xFF111318)
@@ -372,6 +376,7 @@ private val DarkColors = darkColorScheme(
 
 @Composable
 fun BetweenlyTheme(content: @Composable () -> Unit) {
+    LdColors.glassLight = !isSystemInDarkTheme()
     val context = LocalContext.current
     val animationsOn = Store.animationsFlow(context).collectAsState().value
     Motion.bind(animationsOn)
