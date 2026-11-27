@@ -603,6 +603,7 @@ object Store {
     fun unpair(context: Context) {
         val app = context.applicationContext
         ConversationShortcut.remove(app)
+        PetStore.reset(app)
         synchronized(lock) {
             pairGeneration.incrementAndGet()
             SharingScheduler.cancel(app)

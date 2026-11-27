@@ -627,4 +627,16 @@
     <string name="map_directions">Directions</string>
     <string name="map_google_hint">Opens Google Maps with your partner\'s last location</string>
     <string name="draw_saved_count">%1$d saved</string>
+    <string name="partner_default">Partner</string>
+    <string name="pet_title">Our pet</string>
+    <string name="pet_card_sub">Keep the streak going</string>
+    <string name="pet_hint">Tap a pet to say hi.</string>
+    <string name="pet_streak_one">1 day streak</string>
+    <string name="pet_streak_n">%d day streak</string>
+    <string name="pet_both_today">You both messaged today. Nice.</string>
+    <string name="pet_wait_partner">Waiting for %s to message today.</string>
+    <string name="pet_wait_you">%s messaged. Message back to keep the streak.</string>
+    <string name="pet_none_today">Message each other today to keep the streak.</string>
+    <string name="pet_name">Your shared pet</string>
+    <string name="pet_choose">Pick how it looks</string>
 </resources>

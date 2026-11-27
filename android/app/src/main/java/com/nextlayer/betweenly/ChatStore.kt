@@ -228,7 +228,11 @@ object ChatStore {
         }
         copy.put("id", id)
         val status = if (statusOk(message.status)) message.status else SENDING
-        return edit(context) { insertLocked(context, id, message.ts, message.outgoing, status, copy) } == true
+        val ok = edit(context) { insertLocked(context, id, message.ts, message.outgoing, status, copy) } == true
+        if (ok && message.outgoing && message.json.optString("t") in setOf("chat", "att", "link")) {
+            PetStore.record(context, mine = true)
+        }
+        return ok
     }
 
     /** Stores a partner message. False when the id is bad, it is already stored, or it could not be sealed. */
@@ -245,7 +249,9 @@ object ChatStore {
         val ts = if (rawTs > 0L) rawTs else System.currentTimeMillis()
         copy.put("id", id)
         if (rawTs <= 0L) copy.put("ts", ts)
-        return edit(context) { insertIncomingLocked(context, id, ts, copy) } == true
+        val ok = edit(context) { insertIncomingLocked(context, id, ts, copy) } == true
+        if (ok) PetStore.record(context, mine = false)
+        return ok
     }
 
     fun setStatus(context: Context, id: String, status: String): Boolean {

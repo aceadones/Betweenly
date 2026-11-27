@@ -145,6 +145,7 @@ private enum class Screen {
     Camera,
     Drawing,
     SavedDrawings,
+    Pet,
 }
 
 private enum class Tab { Activity, Chat, Location, Profile }
@@ -250,6 +251,7 @@ private fun Root(startOpen: String?) {
             Screen.Track -> TrackScreen(onBack = { screenName = Screen.Main.name })
             Screen.Camera -> CameraRoute(onClose = { screenName = Screen.Main.name })
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
+            Screen.Pet -> com.nextlayer.betweenly.ui.PetScreen(onBack = { screenName = Screen.Main.name })
             Screen.SavedDrawings -> com.nextlayer.betweenly.ui.SavedDrawingsScreen(
                 onBack = { screenName = Screen.Main.name },
             )
@@ -259,6 +261,7 @@ private fun Root(startOpen: String?) {
                 onTrack = { screenName = Screen.Track.name },
                 onCamera = { screenName = Screen.Camera.name },
                 onOpenDrawing = { screenName = Screen.Drawing.name },
+                onOpenPet = { screenName = Screen.Pet.name },
                 onSavedDrawings = { screenName = Screen.SavedDrawings.name },
                 onPrivacy = {
                     privacyFrom = Screen.Main.name
@@ -267,6 +270,11 @@ private fun Root(startOpen: String?) {
                 onUnpaired = { screenName = Screen.Pair.name },
             )
         }
+    }
+    val petRev by com.nextlayer.betweenly.PetStore.changes.collectAsState()
+    val showPet = remember(petRev) { com.nextlayer.betweenly.PetStore.overlayShown(context) }
+    if (screen == Screen.Main && showPet) {
+        com.nextlayer.betweenly.ui.PetOverlay(onOpen = { screenName = Screen.Pet.name })
     }
     val pending = offer
     if (showUpdate && pending != null) {
@@ -288,6 +296,7 @@ private fun MainShell(
     onTrack: () -> Unit,
     onCamera: () -> Unit,
     onOpenDrawing: () -> Unit,
+    onOpenPet: () -> Unit,
     onSavedDrawings: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
@@ -348,6 +357,7 @@ private fun MainShell(
                 when (current) {
                     Tab.Activity -> ActivityScreen(
                         onOpenDrawing = onOpenDrawing,
+                        onOpenPet = onOpenPet,
                     )
                     Tab.Chat -> ChatScreen(
                         onBack = { onTab(Tab.Activity) },
@@ -473,7 +483,7 @@ private fun screenForward(from: Screen, to: Screen): Boolean {
         Screen.Onboarding -> 0
         Screen.Pair -> 1
         Screen.Main -> 2
-        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings -> 3
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings, Screen.Pet -> 3
     }
     return depth(to) >= depth(from)
 }

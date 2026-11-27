@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -73,7 +75,7 @@ import kotlinx.coroutines.withContext
  * DATA-FLOW: none. A Duet tap is a local intent. Install hands a URL to the browser.
  */
 @Composable
-fun ActivityScreen(onOpenDrawing: () -> Unit) {
+fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}) {
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -145,11 +147,15 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
                 style = LdType.Display,
                 color = LdColors.colors.ink,
             )
+            val petRev by com.nextlayer.betweenly.PetStore.changes.collectAsState()
+            val petState = remember(petRev, resumeTick) { com.nextlayer.betweenly.PetStore.state(context) }
+            cards.chunked(2).forEachIndexed { rowIndex, rowCards ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                cards.forEachIndexed { index, card ->
+                rowCards.forEachIndexed { colIndex, card ->
+                    val index = rowIndex * 2 + colIndex
                     Box(Modifier.weight(1f)) {
                         when (card) {
                             HubCard.Draw -> HubTile(
@@ -159,6 +165,18 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
                                 onClick = onOpenDrawing,
                             ) {
                                 DrawMedia(thumb = thumb, waiting = showPreview && thumb == null)
+                            }
+                            HubCard.Pet -> HubTile(
+                                title = stringResource(R.string.pet_title),
+                                subtitle = if (petState.streak > 0) {
+                                    stringResource(R.string.pet_streak_n, petState.streak)
+                                } else {
+                                    stringResource(R.string.pet_card_sub)
+                                },
+                                index = index,
+                                onClick = onOpenPet,
+                            ) {
+                                PetMedia(streak = petState.streak)
                             }
                             HubCard.Duet -> HubTile(
                                 title = stringResource(R.string.duet_title),
@@ -177,12 +195,43 @@ fun ActivityScreen(onOpenDrawing: () -> Unit) {
                         }
                     }
                 }
+                if (rowCards.size == 1) Spacer(Modifier.weight(1f))
+            }
             }
         }
     }
 }
 
-private enum class HubCard { Draw, Duet }
+@Composable
+private fun PetMedia(streak: Int, skinRev: Int = 0) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFFFFE3E7), Color(0xFFFFB7C2)))),
+    ) {
+        val skin = com.nextlayer.betweenly.PetStore.skin(androidx.compose.ui.platform.LocalContext.current)
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(if (skin == 0) R.drawable.pet_bunny else R.drawable.pet_kitten),
+            contentDescription = null,
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxHeight(0.86f),
+        )
+        Row(
+            Modifier.align(Alignment.TopEnd).padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Flame(lit = streak > 0, modifier = Modifier.size(24.dp))
+            if (streak > 0) {
+                Text(
+                    "$streak",
+                    color = Color(0xFF2A0F18),
+                    style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                )
+            }
+        }
+    }
+}
+
+private enum class HubCard { Draw, Pet, Duet }
 
 @Composable
 private fun duetChip(installed: Boolean, now: DuetState.Now?): String {
