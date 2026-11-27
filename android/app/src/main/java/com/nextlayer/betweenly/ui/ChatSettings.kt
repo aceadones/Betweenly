@@ -76,6 +76,9 @@ fun ChatSettings(onBack: () -> Unit) {
     val receipts = remember(revision) { Store.chatReadReceipts(context) }
     val hideActivity = remember(revision) { Store.chatHideActivity(context) }
     BackHandler(onBack = onBack)
+    // Opaque page: the chat underneath must not show through the settings.
+    Box(Modifier.fillMaxSize()) {
+    AppBackground(Modifier.fillMaxSize())
     Scaffold(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -111,6 +114,7 @@ fun ChatSettings(onBack: () -> Unit) {
                 onCheckedChange = { Store.setChatHideActivity(context, it) },
             )
         }
+    }
     }
 }
 
@@ -202,6 +206,7 @@ fun ChatBackground(onBack: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         // Preview only. Wallpaper is the back layer here. Controls live in the column below,

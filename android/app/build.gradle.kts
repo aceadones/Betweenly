@@ -20,8 +20,8 @@ android {
         applicationId = "com.nextlayer.betweenly"
         minSdk = 28
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.0.3"
+        versionCode = 4
+        versionName = "0.0.4"
         ndk { abiFilters += listOf("arm64-v8a") }
         // DATA-FLOW: the only server the app talks to for messages/updates (besides map tiles + FCM).
         buildConfigField("String", "RELAY_URL", "\"${prop("relay.url", "https://loviedowpie-relay.example.workers.dev")}\"")

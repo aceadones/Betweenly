@@ -399,7 +399,7 @@ private fun VisualBubble(
                 modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 6.dp),
             )
         }
-        val inset = hasCaption || hasQuote
+        val inset = true // The bubble always shows as a frame around the picture.
         val radius = if (inset) LdRadius.inner(ChatTheme.bubbleRadius, 4.dp) else ChatTheme.bubbleRadius
         Box(Modifier.padding(if (inset) 4.dp else 0.dp)) {
             FittedStill(
