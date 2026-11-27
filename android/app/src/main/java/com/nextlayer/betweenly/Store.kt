@@ -192,6 +192,13 @@ object Store {
         writeAvatar(context, MY_AVATAR, jpeg, pairState = false)
     }
 
+    /** When the partner last did something in the app (sent, read, typed). Automatic location and battery do not count. */
+    fun partnerActive(context: Context): Long = prefs(context).getLong("partner_active", 0L)
+
+    fun touchPartnerActive(context: Context) {
+        prefs(context).edit().putLong("partner_active", System.currentTimeMillis()).apply()
+    }
+
     fun partnerName(context: Context): String = prefs(context).getString(PARTNER_NAME, "") ?: ""
 
     /** True after at least one profile message has been decrypted. */

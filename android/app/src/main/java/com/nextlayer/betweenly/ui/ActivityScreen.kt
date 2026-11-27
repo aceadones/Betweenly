@@ -75,7 +75,7 @@ import kotlinx.coroutines.withContext
  * DATA-FLOW: none. A Duet tap is a local intent. Install hands a URL to the browser.
  */
 @Composable
-fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}) {
+fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}, onOpenFrame: () -> Unit = {}) {
     val context = LocalContext.current
     val view = LocalView.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -178,6 +178,14 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}) {
                             ) {
                                 PetMedia(streak = petState.streak)
                             }
+                            HubCard.Frame -> HubTile(
+                                title = stringResource(R.string.frame_title),
+                                subtitle = stringResource(R.string.frame_card_sub),
+                                index = index,
+                                onClick = onOpenFrame,
+                            ) {
+                                FrameMedia()
+                            }
                             HubCard.Duet -> HubTile(
                                 title = stringResource(R.string.duet_title),
                                 subtitle = if (!duetInstalled) {
@@ -199,6 +207,32 @@ fun ActivityScreen(onOpenDrawing: () -> Unit, onOpenPet: () -> Unit = {}) {
             }
             }
         }
+    }
+}
+
+@Composable
+private fun FrameMedia() {
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        drawRect(Brush.verticalGradient(listOf(Color(0xFFFFE3E7), Color(0xFFFF9FB0))))
+        val w = size.width
+        val h = size.height
+        // A picture frame with a sun and hills.
+        val fx = w * 0.16f
+        val fy = h * 0.16f
+        val fw = w * 0.68f
+        val fh = h * 0.68f
+        drawRoundRect(Color(0xFFFFFFFF), androidx.compose.ui.geometry.Offset(fx, fy), androidx.compose.ui.geometry.Size(fw, fh), androidx.compose.ui.geometry.CornerRadius(w * 0.05f))
+        drawRoundRect(Brush.verticalGradient(listOf(Color(0xFFFFD1DA), Color(0xFFFF8FA3))), androidx.compose.ui.geometry.Offset(fx + w * 0.04f, fy + w * 0.04f), androidx.compose.ui.geometry.Size(fw - w * 0.08f, fh - w * 0.08f), androidx.compose.ui.geometry.CornerRadius(w * 0.03f))
+        drawCircle(Color(0xFFFFF3C4), w * 0.07f, androidx.compose.ui.geometry.Offset(fx + fw * 0.7f, fy + fh * 0.3f))
+        val hill = androidx.compose.ui.graphics.Path().apply {
+            moveTo(fx + w * 0.04f, fy + fh - w * 0.04f)
+            lineTo(fx + fw * 0.35f, fy + fh * 0.55f)
+            lineTo(fx + fw * 0.6f, fy + fh * 0.78f)
+            lineTo(fx + fw * 0.78f, fy + fh * 0.62f)
+            lineTo(fx + fw - w * 0.04f, fy + fh - w * 0.04f)
+            close()
+        }
+        drawPath(hill, Color(0xFFD62448).copy(alpha = 0.75f))
     }
 }
 
@@ -231,7 +265,7 @@ private fun PetMedia(streak: Int, skinRev: Int = 0) {
     }
 }
 
-private enum class HubCard { Draw, Pet, Duet }
+private enum class HubCard { Draw, Pet, Frame, Duet }
 
 @Composable
 private fun duetChip(installed: Boolean, now: DuetState.Now?): String {

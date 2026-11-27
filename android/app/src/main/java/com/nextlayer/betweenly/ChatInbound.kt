@@ -27,6 +27,11 @@ object ChatInbound {
                 "seen" -> ChatStore.applyReceipt(context, json, read = true)
                 "unsend" -> ChatStore.tombstone(context, json.optString("id"), onlyIncoming = true)
                 "wall" -> ChatWallpaperSync.onIncoming(context, json)
+                "fcom" -> {
+                    // A photo-frame comment. Stored with the chat rows but never shown in the chat.
+                    if (!ChatStore.insertIncoming(context, json)) return
+                    ChatNotifications.onIncoming(context, json)
+                }
                 "chat", "att", "link" -> {
                     if (!ChatStore.insertIncoming(context, json)) return
                     val stored = ChatStore.normalizeId(json.optString("id"))
@@ -46,7 +51,8 @@ object ChatInbound {
                             }
                         }
                     }
-                    ChatStore.noteIncoming(context)
+                    // A photo-frame post is not a chat message: no chat unread badge.
+                    if (json.optInt("fr") != 1) ChatStore.noteIncoming(context)
                     ChatNotifications.onIncoming(context, json)
                 }
             }

@@ -289,7 +289,7 @@ private fun ChatBody(
     }
     LaunchedEffect(chatRev) {
         val loaded = withContext(Dispatchers.IO) { ChatStore.list(context) }
-        messages = loaded
+        messages = loaded.filter { it.json.optInt("fr") != 1 && it.json.optString("t") != "fcom" }
         ready = withContext(Dispatchers.IO) {
             loaded.mapNotNull { message ->
                 if (ChatStore.hasAttachment(context, message.id)) message.id else null
@@ -589,7 +589,7 @@ private fun ChatBody(
     val now = rememberNow()
     val hideActivity = remember(storeRev) { Store.chatHideActivity(context) }
     val heardAt = remember(chatRev) { ChatStore.partnerHeardAt }
-    val seenAt = maxOf(Store.partnerLoc(context)?.lastSeen ?: 0L, heardAt)
+    val seenAt = maxOf(Store.partnerActive(context), heardAt)
     val presence = when {
         hideActivity || seenAt <= 0L -> null
         now - seenAt in 0..90_000L -> stringResource(R.string.chat_online)

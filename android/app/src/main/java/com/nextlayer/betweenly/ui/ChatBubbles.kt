@@ -934,12 +934,7 @@ private fun StatusTick(status: String, outgoing: Boolean, onImage: Boolean = fal
         )
         ChatStore.READ -> DoubleTick(Color(0xFF7EC8FF), stringResource(R.string.chat_status_read))
         ChatStore.DELIVERED -> DoubleTick(tint, stringResource(R.string.chat_status_delivered))
-        ChatStore.SENT -> LuIcon(
-            Lu.Check,
-            contentDescription = stringResource(R.string.chat_status_sent),
-            size = 14.dp,
-            tint = tint,
-        )
+        ChatStore.SENT -> DoubleTick(tint, stringResource(R.string.chat_status_sent), count = 1)
         else -> Unit
     }
 }
@@ -1376,18 +1371,20 @@ fun TypingBubble() {
 
 /** Two full check marks side by side. Grey when delivered, blue when read. */
 @Composable
-private fun DoubleTick(tint: Color, description: String) {
+private fun DoubleTick(tint: Color, description: String, count: Int = 2) {
     androidx.compose.foundation.Canvas(
         Modifier
-            .size(width = 20.dp, height = 14.dp)
+            .size(width = if (count == 2) 20.dp else 12.dp, height = 14.dp)
             .semantics { contentDescription = description },
     ) {
         val sw = 1.7.dp.toPx()
+        // One tick is the same drawing as each tick of the pair, so they look alike.
+        val unit = 20.dp.toPx()
         fun check(dx: Float) {
             val p = androidx.compose.ui.graphics.Path().apply {
-                moveTo(dx + size.width * 0.04f, size.height * 0.56f)
-                lineTo(dx + size.width * 0.20f, size.height * 0.80f)
-                lineTo(dx + size.width * 0.52f, size.height * 0.22f)
+                moveTo(dx + unit * 0.04f, size.height * 0.56f)
+                lineTo(dx + unit * 0.20f, size.height * 0.80f)
+                lineTo(dx + unit * 0.52f, size.height * 0.22f)
             }
             drawPath(
                 p,
@@ -1400,6 +1397,6 @@ private fun DoubleTick(tint: Color, description: String) {
             )
         }
         check(0f)
-        check(size.width * 0.38f)
+        if (count == 2) check(unit * 0.38f)
     }
 }

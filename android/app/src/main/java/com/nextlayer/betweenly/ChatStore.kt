@@ -229,7 +229,7 @@ object ChatStore {
         copy.put("id", id)
         val status = if (statusOk(message.status)) message.status else SENDING
         val ok = edit(context) { insertLocked(context, id, message.ts, message.outgoing, status, copy) } == true
-        if (ok && message.outgoing && message.json.optString("t") in setOf("chat", "att", "link")) {
+        if (ok && message.outgoing && message.json.optString("t") in setOf("chat", "att", "link") && message.json.optInt("fr") != 1) {
             PetStore.record(context, mine = true)
         }
         return ok
@@ -239,7 +239,7 @@ object ChatStore {
     fun insertIncoming(context: Context, json: JSONObject): Boolean {
         val id = normalizeId(json.optString("id")) ?: return false
         val type = json.optString("t")
-        if (type != "chat" && type != "att" && type != "link") return false
+        if (type != "chat" && type != "att" && type != "link" && type != "fcom") return false
         val copy = try {
             JSONObject(json.toString())
         } catch (_: Exception) {
@@ -250,7 +250,7 @@ object ChatStore {
         copy.put("id", id)
         if (rawTs <= 0L) copy.put("ts", ts)
         val ok = edit(context) { insertIncomingLocked(context, id, ts, copy) } == true
-        if (ok) PetStore.record(context, mine = false)
+        if (ok && copy.optInt("fr") != 1 && copy.optString("t") != "fcom") PetStore.record(context, mine = false)
         return ok
     }
 

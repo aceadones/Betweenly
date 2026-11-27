@@ -672,4 +672,18 @@
     <string name="pet_rename">Name your pet</string>
     <string name="pet_rename_title">Name your shared pet</string>
     <string name="pet_day_note">Each day ends at 9:30 pm IST for both of you.</string>
+    <string name="frame_title">Photo frame</string>
+    <string name="frame_card_sub">Share photos, comment together</string>
+    <string name="frame_add">Add a photo</string>
+    <string name="frame_empty">No photos yet. Add the first one with the button at the top.</string>
+    <string name="frame_caption">Write a caption</string>
+    <string name="frame_cancel">Cancel</string>
+    <string name="frame_post">Post</string>
+    <string name="frame_comment">Comment</string>
+    <string name="frame_comments_title">Comments</string>
+    <string name="frame_write">Write a comment</string>
+    <string name="frame_react">React</string>
+    <string name="frame_reply">Reply</string>
+    <string name="frame_replying">Replying to %s</string>
+    <string name="frame_photo_cd">Frame photo</string>
 </resources>

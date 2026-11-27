@@ -356,6 +356,56 @@ object ChatController {
         }
     }
 
+    /** Posts a photo to the shared photo frame. It is an encrypted attachment flagged `fr`, hidden from the chat. */
+    fun sendFramePhoto(context: Context, uri: android.net.Uri, caption: String) {
+        install(context)
+        if (!Store.isPaired(context)) return
+        val cap = caption.trim().take(500)
+        AppScope.scope.launch {
+            try {
+                val result = ChatMedia.fromUri(context, uri, asVideo = false, asFile = false)
+                when (result) {
+                    is MediaResult.Ok -> if (result.prepared.kind == "photo") {
+                        sendPrepared(context, result.prepared, null, cap, frame = true)
+                    } else {
+                        note(R.string.chat_attach_failed)
+                    }
+                    is MediaResult.TooLarge -> note(R.string.chat_too_large)
+                    is MediaResult.Failed -> note(R.string.chat_attach_failed)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                note(R.string.chat_attach_failed)
+            }
+        }
+    }
+
+    /** A comment on a frame photo, or a reply to a comment when [parentId] is set. DATA-FLOW: encrypted text, to the partner via the relay. */
+    fun sendComment(context: Context, postId: String, parentId: String?, raw: String) {
+        install(context)
+        val text = raw.trim().take(500)
+        val post = ChatStore.normalizeId(postId) ?: return
+        if (text.isEmpty() || !Store.isPaired(context)) return
+        AppScope.scope.launch {
+            try {
+                val id = ChatStore.newId()
+                val ts = System.currentTimeMillis()
+                val json = JSONObject().put("t", "fcom").put("id", id).put("ts", ts).put("p", post).put("text", text)
+                parentId?.let { ChatStore.normalizeId(it) }?.let { json.put("r", it) }
+                if (!fit(json)) return@launch
+                if (!ChatStore.insert(context, ChatMessage(id, ts, outgoing = true, status = ChatStore.SENDING, json = json))) return@launch
+                val ok = transmit(context, json)
+                ChatStore.setStatus(context, id, if (ok) ChatStore.SENT else ChatStore.FAILED)
+                if (!ok) note(R.string.chat_send_failed)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                note(R.string.chat_send_failed)
+            }
+        }
+    }
+
     fun react(context: Context, id: String, emoji: String) {
         val clean = emoji.trim().filter { it >= ' ' }.take(16)
         val safe = ChatStore.normalizeId(id) ?: return
@@ -447,13 +497,14 @@ object ChatController {
         }
     }
 
-    private suspend fun sendPrepared(context: Context, prepared: PreparedMedia, reply: String?, caption: String = "") {
+    private suspend fun sendPrepared(context: Context, prepared: PreparedMedia, reply: String?, caption: String = "", frame: Boolean = false) {
         if (!Store.isPaired(context)) return
         val id = ChatStore.newId()
         val ts = System.currentTimeMillis()
         val json = attJson(id, ts, prepared, fid = "", key = "")
         putCaption(json, prepared.kind, caption)
         putReply(json, reply)
+        if (frame) json.put("fr", 1)
         if (!fit(json)) {
             note(R.string.chat_attach_failed)
             return

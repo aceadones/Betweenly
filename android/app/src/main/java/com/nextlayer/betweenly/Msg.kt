@@ -292,6 +292,9 @@ object Inbox {
 
     private fun apply(context: Context, json: JSONObject) {
         try {
+            if (json.optString("t") in setOf("chat", "att", "link", "react", "typing", "seen", "draw", "fcom", "pet", "wall")) {
+                Store.touchPartnerActive(context)
+            }
             when (json.optString("t")) {
                 "loc" -> applyLoc(context, json)
                 "bat" -> applyBat(context, json)
@@ -303,7 +306,7 @@ object Inbox {
                 "profile" -> applyProfile(context, json)
                 "typing" -> Typing.onIncoming(json)
                 "pet" -> PetStore.applyRemote(context, json.optInt("skin", 0), json.optString("o", ""), json.optString("n", ""), json.optLong("ts", 0L))
-                "chat", "att", "link", "react" -> ChatInbound.handle(context, json)
+                "chat", "att", "link", "react", "fcom" -> ChatInbound.handle(context, json)
                 "dlv", "seen" -> ChatInbound.handle(context, json)
                 "unsend", "wall" -> ChatInbound.handle(context, json)
                 "draw" -> DrawInbound.handle(context, json)

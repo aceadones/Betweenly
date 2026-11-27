@@ -147,6 +147,7 @@ private enum class Screen {
     Drawing,
     SavedDrawings,
     Pet,
+    Frame,
 }
 
 private enum class Tab { Activity, Chat, Location, Profile }
@@ -253,6 +254,7 @@ private fun Root(startOpen: String?) {
             Screen.Camera -> CameraRoute(onClose = { screenName = Screen.Main.name })
             Screen.Drawing -> DrawingStudioScreen(onClose = { screenName = Screen.Main.name })
             Screen.Pet -> com.nextlayer.betweenly.ui.PetScreen(onBack = { screenName = Screen.Main.name })
+            Screen.Frame -> com.nextlayer.betweenly.ui.FrameScreen(onBack = { screenName = Screen.Main.name })
             Screen.SavedDrawings -> com.nextlayer.betweenly.ui.SavedDrawingsScreen(
                 onBack = { screenName = Screen.Main.name },
             )
@@ -263,6 +265,7 @@ private fun Root(startOpen: String?) {
                 onCamera = { screenName = Screen.Camera.name },
                 onOpenDrawing = { screenName = Screen.Drawing.name },
                 onOpenPet = { screenName = Screen.Pet.name },
+                onOpenFrame = { screenName = Screen.Frame.name },
                 onSavedDrawings = { screenName = Screen.SavedDrawings.name },
                 onPrivacy = {
                     privacyFrom = Screen.Main.name
@@ -298,6 +301,7 @@ private fun MainShell(
     onCamera: () -> Unit,
     onOpenDrawing: () -> Unit,
     onOpenPet: () -> Unit,
+    onOpenFrame: () -> Unit,
     onSavedDrawings: () -> Unit,
     onPrivacy: () -> Unit,
     onUnpaired: () -> Unit,
@@ -359,6 +363,7 @@ private fun MainShell(
                     Tab.Activity -> ActivityScreen(
                         onOpenDrawing = onOpenDrawing,
                         onOpenPet = onOpenPet,
+                        onOpenFrame = onOpenFrame,
                     )
                     Tab.Chat -> ChatScreen(
                         onBack = { onTab(Tab.Activity) },
@@ -484,7 +489,7 @@ private fun screenForward(from: Screen, to: Screen): Boolean {
         Screen.Onboarding -> 0
         Screen.Pair -> 1
         Screen.Main -> 2
-        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings, Screen.Pet -> 3
+        Screen.Privacy, Screen.Track, Screen.Camera, Screen.Drawing, Screen.SavedDrawings, Screen.Pet, Screen.Frame -> 3
     }
     return depth(to) >= depth(from)
 }
