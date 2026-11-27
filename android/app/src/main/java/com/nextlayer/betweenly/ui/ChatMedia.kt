@@ -128,10 +128,13 @@ object ChatMedia {
      */
     fun keyboardImage(bytes: ByteArray, reportedMime: String): KeyboardImage {
         val mime = sniff(bytes, reportedMime)
+        // A pasted screenshot or photo is large. Only small images count as stickers.
+        val (bw, bh) = bounds(bytes)
+        val stickerSized = bw in 1..720 && bh in 1..720
         return when (mime) {
             "image/gif" -> KeyboardImage("gif", "image/gif", "animation.gif")
-            "image/webp" -> KeyboardImage("sticker", "image/webp", "sticker.webp")
-            "image/png" -> KeyboardImage("sticker", "image/png", "sticker.png")
+            "image/webp" -> if (stickerSized) KeyboardImage("sticker", "image/webp", "sticker.webp") else KeyboardImage("photo", "image/jpeg", "photo.jpg")
+            "image/png" -> if (stickerSized) KeyboardImage("sticker", "image/png", "sticker.png") else KeyboardImage("photo", "image/jpeg", "photo.jpg")
             else -> KeyboardImage("photo", "image/jpeg", "photo.jpg")
         }
     }
@@ -345,7 +348,7 @@ object ChatMedia {
         val animated = webp && webpAnimated(bytes)
         val tiny = isTiny(bytes)
         val (w, h) = bounds(bytes)
-        if (fromKeyboard && (png || webp) && (alpha || tiny || animated)) {
+        if (fromKeyboard && (png || webp) && (alpha || tiny || animated) && (animated || (w in 1..720 && h in 1..720))) {
             val outMime = if (webp) "image/webp" else "image/png"
             val fallback = if (webp) "sticker.webp" else "sticker.png"
             return MediaResult.Ok(
@@ -363,7 +366,7 @@ object ChatMedia {
                 PreparedMedia(bytes, "image/webp", kind, name.ifBlank { "image.webp" }, w, h, thumbFromBytes(bytes)),
             )
         }
-        if (fromKeyboard && (png || webp)) {
+        if (fromKeyboard && (png || webp) && w in 1..720 && h in 1..720) {
             val outMime = if (webp) "image/webp" else "image/png"
             val fallback = if (webp) "sticker.webp" else "sticker.png"
             return MediaResult.Ok(

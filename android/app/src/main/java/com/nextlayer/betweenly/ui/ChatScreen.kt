@@ -1565,6 +1565,8 @@ private fun Composer(
                             alignEnd = true,
                             origin = TransformOrigin(1f, 1f),
                             onDismiss = onDismissAttach,
+                            // Not focusable: the keyboard stays open while the menu shows.
+                            focusable = false,
                         ) {
                             PlusMenu(
                                 onGallery = onGallery,
@@ -1832,6 +1834,7 @@ private fun AnchoredPopup(
     alignEnd: Boolean = false,
     origin: TransformOrigin,
     onDismiss: () -> Unit,
+    focusable: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     var render by remember { mutableStateOf(false) }
@@ -1874,7 +1877,7 @@ private fun AnchoredPopup(
         },
         onDismissRequest = onDismiss,
         properties = PopupProperties(
-            focusable = true,
+            focusable = focusable,
             dismissOnBackPress = true,
             dismissOnClickOutside = true,
             clippingEnabled = false,

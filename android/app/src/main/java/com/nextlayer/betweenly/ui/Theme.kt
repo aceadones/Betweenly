@@ -80,7 +80,7 @@ object LdColors {
     /** True in light mode: glass is a light frosted fill with dark text. Set by [BetweenlyTheme]. */
     var glassLight by androidx.compose.runtime.mutableStateOf(false)
     /** Near-black wine at 78%. Dialogs use this; cards use [darkGlass]. */
-    val glassFill: Color get() = if (glassLight) Color(0xD9FFFFFF) else Color(0xC70C060A)
+    val glassFill: Color get() = if (glassLight) Color(0xEEFFFFFF) else Color(0xC70C060A)
     val success = Color(0xFF34C759)
     val white = Color(0xFFFFFFFF)
     val black = Color(0xFF111318)

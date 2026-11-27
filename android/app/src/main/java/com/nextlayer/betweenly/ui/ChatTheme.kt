@@ -23,7 +23,7 @@ object ChatTheme {
     val composerRadius = 28.dp
     val chip = RoundedCornerShape(50)
     val swatch = RoundedCornerShape(12.dp)
-    val photoMax = 260.dp
+    val photoMax = 300.dp
     val stickerMax = 180.dp
 
     /** Solid wallpaper choices, in the same order as Store's "color:0" … "color:5". */

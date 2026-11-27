@@ -380,7 +380,7 @@ private fun VisualBubble(
     val hasQuote = quoted != null || quoteMissing
     val wide = kind != "gif" || hasCaption || hasQuote
     val bubbleWidth = if (wide) ChatTheme.photoMax else ChatTheme.stickerMax
-    val maxHeight = if (kind == "video") 240.dp else 320.dp
+    val maxHeight = if (kind == "video") 300.dp else 440.dp
     val shape = ChatTheme.bubble
     val mime = message.json.optString("mime")
     val animate = kind == "gif" || mime == "image/gif" || mime == "image/webp"
@@ -475,9 +475,10 @@ private fun FittedStill(
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress),
     ) {
         val natural = maxWidth / ratio
-        val height = natural.coerceIn(96.dp, maxHeight)
+        // Fill the width; very tall pictures are cropped top and bottom at maxHeight.
+        val height = natural.coerceIn(120.dp, maxHeight)
         Box(Modifier.fillMaxWidth().height(height).clip(corners)) {
-            MediaVisual(message, ready, animate, Modifier.fillMaxSize(), desc, corners)
+            MediaVisual(message, ready, animate, Modifier.fillMaxSize(), desc, corners, ContentScale.Crop)
         }
     }
 }
@@ -832,14 +833,15 @@ private fun MediaVisual(
     modifier: Modifier,
     desc: String,
     corners: Shape = ChatTheme.bubble,
+    scale: ContentScale = ContentScale.Fit,
 ) {
     val framed = modifier.clip(corners)
     if (ready) {
-        ChatFrame(message.id, animate, if (animate) 720 else 1080, framed, desc, ContentScale.Fit)
+        ChatFrame(message.id, animate, if (animate) 720 else 1080, framed, desc, scale)
     } else {
         val thumb = message.json.optString("thumb")
         if (thumb.isNotEmpty()) {
-            ThumbImage(thumb, framed, desc)
+            ThumbImage(thumb, framed, desc, scale)
         } else {
             Box(framed.heightIn(min = 72.dp).widthIn(min = 96.dp))
         }
@@ -862,7 +864,7 @@ fun ChatFrame(
         bytes = withContext(Dispatchers.IO) { ChatStore.readAttachment(context, id) }
     }
     val data = bytes ?: return
-    if (animate) AnimBytes(id, data, desc, modifier) else StillBytes(id, data, desc, modifier, maxEdge, scale)
+    if (animate) AnimBytes(id, data, desc, modifier, scale) else StillBytes(id, data, desc, modifier, maxEdge, scale)
 }
 
 @Composable
@@ -978,7 +980,7 @@ private fun StillBytes(
 }
 
 @Composable
-private fun ThumbImage(b64: String, modifier: Modifier, desc: String) {
+private fun ThumbImage(b64: String, modifier: Modifier, desc: String, scale: ContentScale = ContentScale.Fit) {
     var bitmap by remember(b64) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(b64) {
         bitmap = withContext(Dispatchers.IO) {
@@ -995,12 +997,12 @@ private fun ThumbImage(b64: String, modifier: Modifier, desc: String) {
         bitmap = shown.asImageBitmap(),
         contentDescription = desc,
         modifier = modifier,
-        contentScale = ContentScale.Fit,
+        contentScale = scale,
     )
 }
 
 @Composable
-private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modifier) {
+private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modifier, scale: ContentScale = ContentScale.Fit) {
     val context = LocalContext.current
     var drawable by remember(id) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
     LaunchedEffect(id) {
@@ -1032,7 +1034,7 @@ private fun AnimBytes(id: String, bytes: ByteArray, desc: String, modifier: Modi
         modifier = modifier,
         factory = { viewContext ->
             ImageView(viewContext).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
+                scaleType = if (scale == ContentScale.Crop) ImageView.ScaleType.CENTER_CROP else ImageView.ScaleType.FIT_CENTER
                 adjustViewBounds = true
             }
         },
