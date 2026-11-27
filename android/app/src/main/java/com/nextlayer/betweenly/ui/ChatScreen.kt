@@ -544,8 +544,20 @@ private fun ChatBody(
     LaunchedEffect(idKey) {
         ChatController.syncDelivery(context, messages)
     }
-    LaunchedEffect(listState, idKey) {
+    // A message counts as read only while the app is really open on this chat: resumed, in the
+    // foreground, with the message on screen. Never while the phone is locked or the app is in the background.
+    var resumedNow by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ ->
+            resumedNow = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(listState, idKey, resumedNow) {
+        if (!resumedNow) return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }.collect { indices ->
+            if (!AppState.foreground) return@collect
             val ids = ArrayList<String>()
             for (index in indices) {
                 val row = rows.getOrNull(index) as? ChatRow.Msg ?: continue

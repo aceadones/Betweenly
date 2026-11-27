@@ -61,6 +61,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -930,18 +932,8 @@ private fun StatusTick(status: String, outgoing: Boolean, onImage: Boolean = fal
             size = 14.dp,
             tint = if (onImage) Color.White else ChatTheme.ink(outgoing),
         )
-        ChatStore.READ -> LuIcon(
-            Lu.CheckCheck,
-            contentDescription = stringResource(R.string.chat_status_read),
-            size = 14.dp,
-            tint = Color(0xFF7EC8FF),
-        )
-        ChatStore.DELIVERED -> LuIcon(
-            Lu.CheckCheck,
-            contentDescription = stringResource(R.string.chat_status_delivered),
-            size = 14.dp,
-            tint = tint,
-        )
+        ChatStore.READ -> DoubleTick(Color(0xFF7EC8FF), stringResource(R.string.chat_status_read))
+        ChatStore.DELIVERED -> DoubleTick(tint, stringResource(R.string.chat_status_delivered))
         ChatStore.SENT -> LuIcon(
             Lu.Check,
             contentDescription = stringResource(R.string.chat_status_sent),
@@ -1378,5 +1370,36 @@ fun TypingBubble() {
                     .background(ChatTheme.onTheirs(), CircleShape),
             )
         }
+    }
+}
+
+
+/** Two full check marks side by side. Grey when delivered, blue when read. */
+@Composable
+private fun DoubleTick(tint: Color, description: String) {
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .size(width = 20.dp, height = 14.dp)
+            .semantics { contentDescription = description },
+    ) {
+        val sw = 1.7.dp.toPx()
+        fun check(dx: Float) {
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(dx + size.width * 0.04f, size.height * 0.56f)
+                lineTo(dx + size.width * 0.20f, size.height * 0.80f)
+                lineTo(dx + size.width * 0.52f, size.height * 0.22f)
+            }
+            drawPath(
+                p,
+                tint,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = sw,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round,
+                ),
+            )
+        }
+        check(0f)
+        check(size.width * 0.38f)
     }
 }
