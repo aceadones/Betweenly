@@ -379,8 +379,8 @@ private fun VisualBubble(
     val hasCaption = caption.isNotBlank()
     val hasQuote = quoted != null || quoteMissing
     val wide = kind != "gif" || hasCaption || hasQuote
-    val bubbleWidth = if (wide) ChatTheme.photoMax else ChatTheme.stickerMax
-    val maxHeight = if (kind == "video") 300.dp else 440.dp
+    val bubbleWidth = if (kind == "gif") ChatTheme.photoMax * 0.75f else if (wide) ChatTheme.photoMax else ChatTheme.stickerMax
+    val maxHeight = if (kind == "video") 300.dp else if (kind == "gif") 300.dp else 440.dp
     val shape = ChatTheme.bubble
     val mime = message.json.optString("mime")
     val animate = kind == "gif" || mime == "image/gif" || mime == "image/webp"
